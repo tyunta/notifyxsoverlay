@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -51,13 +50,6 @@ def write_wrapper(wrapper_path: Path, repo: str, uvx_exe: str) -> None:
     wrapper_path.write_text(wrapper_content, encoding="utf-8")
 
 
-def get_cmd_exe() -> Path:
-    comspec = os.environ.get("ComSpec")
-    if comspec:
-        return Path(comspec)
-    return Path(r"C:\Windows\System32\cmd.exe")
-
-
 def build_manifest(binary_path: Path, arguments: str) -> dict[str, Any]:
     return {
         "source": "builtin",
@@ -79,10 +71,13 @@ def build_manifest(binary_path: Path, arguments: str) -> dict[str, Any]:
     }
 
 
-def write_manifest(manifest_path: Path, wrapper_path: Path) -> None:
-    cmd_exe = get_cmd_exe()
-    args = f'/c "{wrapper_path}"'
-    manifest = build_manifest(cmd_exe, args)
+def build_uvx_arguments(repo: str) -> str:
+    return f'--refresh --from "{repo}" {APP_COMMAND} run'
+
+
+def write_manifest(manifest_path: Path, uvx_exe: str, repo: str) -> None:
+    args = build_uvx_arguments(repo)
+    manifest = build_manifest(Path(uvx_exe), args)
     manifest_path.write_text(
         json.dumps(manifest, indent=2),
         encoding="utf-8",
@@ -295,7 +290,7 @@ def cmd_install(args: argparse.Namespace) -> int:
         return 1
 
     write_wrapper(wrapper_path, repo, uvx_exe)
-    write_manifest(manifest_path, wrapper_path)
+    write_manifest(manifest_path, uvx_exe, repo)
 
     try:
         register_manifest(manifest_path, auto_launch=True)
