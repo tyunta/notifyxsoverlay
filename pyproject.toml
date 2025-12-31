@@ -11,7 +11,9 @@ requires-python = ">=3.10"
 dependencies = [
   "openvr",
   "websockets>=12.0",
-  "winrt; platform_system == \"Windows\"",
+  "winrt-Windows.Foundation; platform_system == \"Windows\"",
+  "winrt-Windows.UI.Notifications; platform_system == \"Windows\"",
+  "winrt-Windows.UI.Notifications.Management; platform_system == \"Windows\"",
 ]
 
 [project.scripts]
