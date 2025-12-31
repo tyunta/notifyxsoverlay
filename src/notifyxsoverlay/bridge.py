@@ -138,7 +138,7 @@ async def _send_xs_notification(
     title: str,
     content: str,
     websocket: Any | None,
-) -> tuple[bool, Any | None]:
+) -> tuple[bool, Any | None, str | None]:
     try:
         import websockets  # type: ignore
     except Exception as exc:
@@ -153,13 +153,13 @@ async def _send_xs_notification(
 
     try:
         await websocket.send(json.dumps(message, ensure_ascii=False))
-        return True, websocket
-    except Exception:
+        return True, websocket, None
+    except Exception as exc:
         try:
             await websocket.close()
         except Exception:
             pass
-        return False, None
+        return False, None, str(exc)
 
 
 def _evaluate_notification(
@@ -340,7 +340,7 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
                 continue
 
             try:
-                ok, websocket = await _send_xs_notification(
+                ok, websocket, send_error = await _send_xs_notification(
                     ws_url_value,
                     title=title,
                     content=content,
@@ -351,7 +351,12 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
                 else:
                     now = time.time()
                     if now - last_send_error_at >= send_error_interval:
-                        log_event("error", "notification_send_failed", error="send_failed", app=app_key)
+                        log_event(
+                            "error",
+                            "notification_send_failed",
+                            error=send_error or "send_failed",
+                            app=app_key,
+                        )
                         last_send_error_at = now
             except Exception as exc:
                 now = time.time()
