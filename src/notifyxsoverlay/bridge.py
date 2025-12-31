@@ -115,13 +115,19 @@ def _ensure_client_param(ws_url: str) -> str:
     return f"{ws_url}{joiner}client={APP_NAME}"
 
 
-def _build_notification_payload(title: str, content: str, timeout_seconds: float) -> dict[str, Any]:
+def _build_notification_payload(
+    title: str,
+    content: str,
+    timeout_seconds: float,
+    opacity: float,
+) -> dict[str, Any]:
     return {
         "title": title,
         "content": content,
         "sourceApp": APP_NAME,
         "type": 1,
         "timeout": timeout_seconds,
+        "opacity": opacity,
     }
 
 
@@ -139,6 +145,7 @@ async def _send_xs_notification(
     title: str,
     content: str,
     timeout_seconds: float,
+    opacity: float,
     websocket: Any | None,
 ) -> tuple[bool, Any | None, str | None]:
     try:
@@ -147,7 +154,7 @@ async def _send_xs_notification(
         raise RuntimeError(f"websockets import failed: {exc}") from exc
 
     normalized_url = _ensure_client_param(ws_url)
-    notification = _build_notification_payload(title, content, timeout_seconds)
+    notification = _build_notification_payload(title, content, timeout_seconds, opacity)
     message = _build_ws_message(notification)
 
     if websocket is None or getattr(websocket, "closed", False):
@@ -268,6 +275,16 @@ def _safe_notification_timeout(value: Any) -> float:
         return 3.0
 
 
+def _safe_notification_opacity(value: Any) -> float:
+    try:
+        if value is None:
+            return 1.0
+        opacity = float(value)
+        return opacity if 0.0 < opacity <= 1.0 else 1.0
+    except Exception:
+        return 1.0
+
+
 async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
     config_path = get_config_path()
     config = load_config(config_path)
@@ -295,6 +312,9 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
     poll_delay = _safe_poll_interval(config.get("poll_interval_seconds"))
     notification_timeout = _safe_notification_timeout(
         config.get("xs_overlay", {}).get("notification_timeout_seconds")
+    )
+    notification_opacity = _safe_notification_opacity(
+        config.get("xs_overlay", {}).get("notification_opacity")
     )
 
     log_event("info", "run_start", ws_url=ws_url_value)
@@ -327,6 +347,9 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
                 poll_delay = _safe_poll_interval(config.get("poll_interval_seconds"))
                 notification_timeout = _safe_notification_timeout(
                     config.get("xs_overlay", {}).get("notification_timeout_seconds")
+                )
+                notification_opacity = _safe_notification_opacity(
+                    config.get("xs_overlay", {}).get("notification_opacity")
                 )
         if reset_learning_state(config, session_id):
             save_config(config_path, config)
@@ -364,6 +387,7 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
                     title=title,
                     content=content,
                     timeout_seconds=notification_timeout,
+                    opacity=notification_opacity,
                     websocket=websocket,
                 )
                 if ok:
