@@ -126,7 +126,7 @@ def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
         apps = openvr.VRApplications()
         remove_err = call_vrapp_method(
             apps,
-            ("RemoveApplicationManifest", "remove_application_manifest"),
+            ("RemoveApplicationManifest", "remove_application_manifest", "removeApplicationManifest"),
             str(manifest_path),
         )
         if remove_err is None:
@@ -138,7 +138,7 @@ def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
             )
         add_err = call_vrapp_method(
             apps,
-            ("AddApplicationManifest", "add_application_manifest"),
+            ("AddApplicationManifest", "add_application_manifest", "addApplicationManifest"),
             str(manifest_path),
             False,
         )
@@ -148,7 +148,7 @@ def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
             raise RuntimeError(f"AddApplicationManifest failed: {add_err}")
         auto_err = call_vrapp_method(
             apps,
-            ("SetApplicationAutoLaunch", "set_application_auto_launch"),
+            ("SetApplicationAutoLaunch", "set_application_auto_launch", "setApplicationAutoLaunch"),
             APP_KEY,
             auto_launch,
         )
@@ -170,7 +170,7 @@ def unregister_manifest(manifest_path: Path, allow_missing: bool = False) -> Non
         apps = openvr.VRApplications()
         auto_err = call_vrapp_method(
             apps,
-            ("SetApplicationAutoLaunch", "set_application_auto_launch"),
+            ("SetApplicationAutoLaunch", "set_application_auto_launch", "setApplicationAutoLaunch"),
             APP_KEY,
             False,
         )
@@ -192,7 +192,7 @@ def unregister_manifest(manifest_path: Path, allow_missing: bool = False) -> Non
             )
         remove_err = call_vrapp_method(
             apps,
-            ("RemoveApplicationManifest", "remove_application_manifest"),
+            ("RemoveApplicationManifest", "remove_application_manifest", "removeApplicationManifest"),
             str(manifest_path),
         )
         if remove_err is None:
