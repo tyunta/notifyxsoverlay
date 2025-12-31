@@ -14,6 +14,7 @@ dependencies = [
   "winrt-Windows.Foundation; platform_system == \"Windows\"",
   "winrt-Windows.Foundation.Collections; platform_system == \"Windows\"",
   "winrt-Windows.Foundation.Metadata; platform_system == \"Windows\"",
+  "winrt-Windows.ApplicationModel; platform_system == \"Windows\"",
   "winrt-Windows.UI.Notifications; platform_system == \"Windows\"",
   "winrt-Windows.UI.Notifications.Management; platform_system == \"Windows\"",
 ]
