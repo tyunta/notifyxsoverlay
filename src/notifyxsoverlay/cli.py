@@ -106,8 +106,58 @@ def get_vrapp_method(apps: Any, *names: str) -> Any | None:
     return None
 
 
-def call_vrapp_method(apps: Any, names: tuple[str, ...], *args: Any) -> int | None:
+def _normalize_method_name(name: str) -> str:
+    return name.replace("_", "").lower()
+
+
+def find_vrapp_method(apps: Any, *names: str) -> Any | None:
     method = get_vrapp_method(apps, *names)
+    if method is not None:
+        return method
+    targets = {_normalize_method_name(name) for name in names}
+    for attr in dir(apps):
+        normalized = _normalize_method_name(attr)
+        if normalized in targets:
+            candidate = getattr(apps, attr, None)
+            if callable(candidate):
+                return candidate
+    return None
+
+
+def find_vrapp_method_by_tokens(apps: Any, *tokens: str) -> Any | None:
+    tokens_normalized = [_normalize_method_name(token) for token in tokens]
+    for attr in dir(apps):
+        normalized = _normalize_method_name(attr)
+        if all(token in normalized for token in tokens_normalized):
+            candidate = getattr(apps, attr, None)
+            if callable(candidate):
+                return candidate
+    return None
+
+
+def summarize_vrapp_methods(apps: Any) -> str:
+    candidates = []
+    for name in dir(apps):
+        lowered = name.lower()
+        if "manifest" in lowered or "application" in lowered or "autolaunch" in lowered:
+            candidates.append(name)
+    candidates = sorted(set(candidates))
+    if not candidates:
+        return ""
+    if len(candidates) > 20:
+        return ", ".join(candidates[:20]) + ", ..."
+    return ", ".join(candidates)
+
+
+def call_vrapp_method(
+    apps: Any,
+    names: tuple[str, ...],
+    tokens: tuple[str, ...] | None,
+    *args: Any,
+) -> int | None:
+    method = find_vrapp_method(apps, *names)
+    if method is None and tokens is not None:
+        method = find_vrapp_method_by_tokens(apps, *tokens)
     if method is None:
         return None
     result = method(*args)
@@ -127,6 +177,7 @@ def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
         remove_err = call_vrapp_method(
             apps,
             ("RemoveApplicationManifest", "remove_application_manifest", "removeApplicationManifest"),
+            ("remove", "application", "manifest"),
             str(manifest_path),
         )
         if remove_err is None:
@@ -139,16 +190,25 @@ def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
         add_err = call_vrapp_method(
             apps,
             ("AddApplicationManifest", "add_application_manifest", "addApplicationManifest"),
+            ("add", "application", "manifest"),
             str(manifest_path),
             False,
         )
         if add_err is None:
+            available = summarize_vrapp_methods(apps)
+            if available:
+                log_event(
+                    "warning",
+                    "steamvr_install_methods",
+                    available=available,
+                )
             raise RuntimeError("AddApplicationManifest not available")
         if int(add_err) != 0:
             raise RuntimeError(f"AddApplicationManifest failed: {add_err}")
         auto_err = call_vrapp_method(
             apps,
             ("SetApplicationAutoLaunch", "set_application_auto_launch", "setApplicationAutoLaunch"),
+            ("set", "application", "auto", "launch"),
             APP_KEY,
             auto_launch,
         )
@@ -171,6 +231,7 @@ def unregister_manifest(manifest_path: Path, allow_missing: bool = False) -> Non
         auto_err = call_vrapp_method(
             apps,
             ("SetApplicationAutoLaunch", "set_application_auto_launch", "setApplicationAutoLaunch"),
+            ("set", "application", "auto", "launch"),
             APP_KEY,
             False,
         )
@@ -193,6 +254,7 @@ def unregister_manifest(manifest_path: Path, allow_missing: bool = False) -> Non
         remove_err = call_vrapp_method(
             apps,
             ("RemoveApplicationManifest", "remove_application_manifest", "removeApplicationManifest"),
+            ("remove", "application", "manifest"),
             str(manifest_path),
         )
         if remove_err is None:
@@ -240,10 +302,15 @@ def cmd_install(args: argparse.Namespace) -> int:
         log_event("info", "steamvr_install_ok", app_key=APP_KEY, manifest=str(manifest_path))
         return 0
     except Exception as exc:
+        error_payload = {
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "error_repr": repr(exc),
+        }
         log_event(
             "error",
             "steamvr_install_failed",
-            error=str(exc),
+            **error_payload,
             hint="Start SteamVR and retry, or enable auto-launch manually in SteamVR settings.",
         )
         return 1
@@ -268,10 +335,15 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
             manifest_missing=manifest_missing,
         )
     except Exception as exc:
+        error_payload = {
+            "error": str(exc),
+            "error_type": type(exc).__name__,
+            "error_repr": repr(exc),
+        }
         log_event(
             "error",
             "steamvr_uninstall_failed",
-            error=str(exc),
+            **error_payload,
             hint="Start SteamVR and retry, or remove the manifest manually.",
         )
         error = exc
