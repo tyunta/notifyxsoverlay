@@ -209,18 +209,31 @@ def register_manifest(
     openvr.init(openvr.VRApplication_Utility)
     try:
         apps = openvr.VRApplications()
-        remove_err = call_vrapp_method(
-            apps,
-            ("RemoveApplicationManifest", "remove_application_manifest", "removeApplicationManifest"),
-            ("remove", "application", "manifest"),
-            str(manifest_path),
-        )
+        try:
+            remove_err = call_vrapp_method(
+                apps,
+                ("RemoveApplicationManifest", "remove_application_manifest", "removeApplicationManifest"),
+                ("remove", "application", "manifest"),
+                str(manifest_path),
+            )
+        except Exception as exc:
+            if type(exc).__name__ == "ApplicationError_InvalidManifest":
+                log_event(
+                    "warning",
+                    "steamvr_install_skip",
+                    action="RemoveApplicationManifest",
+                    error_type=type(exc).__name__,
+                    error_repr=repr(exc),
+                )
+                remove_err = None
+            else:
+                raise
         if remove_err is None:
             log_event(
                 "warning",
                 "steamvr_install_skip",
                 action="RemoveApplicationManifest",
-                error="method_not_available",
+                error="method_not_available_or_failed",
             )
         invalid_error = getattr(openvr, "ApplicationError_InvalidManifest", None)
         last_invalid: Exception | None = None
