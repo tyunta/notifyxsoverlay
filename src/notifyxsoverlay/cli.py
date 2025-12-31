@@ -106,6 +106,16 @@ def get_vrapp_method(apps: Any, *names: str) -> Any | None:
     return None
 
 
+def call_vrapp_method(apps: Any, names: tuple[str, ...], *args: Any) -> int | None:
+    method = get_vrapp_method(apps, *names)
+    if method is None:
+        return None
+    result = method(*args)
+    if result is None:
+        return 0
+    return int(result)
+
+
 def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
     openvr = with_openvr()
     if openvr is None:
@@ -114,19 +124,38 @@ def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
     openvr.init(openvr.VRApplication_Utility)
     try:
         apps = openvr.VRApplications()
-        remove_manifest = get_vrapp_method(
+        remove_err = call_vrapp_method(
             apps,
-            "RemoveApplicationManifest",
-            "remove_application_manifest",
+            ("RemoveApplicationManifest", "remove_application_manifest"),
+            str(manifest_path),
         )
-        if remove_manifest is not None:
-            remove_manifest(str(manifest_path))
-        err = apps.AddApplicationManifest(str(manifest_path), False)
-        if int(err) != 0:
-            raise RuntimeError(f"AddApplicationManifest failed: {err}")
-        err = apps.SetApplicationAutoLaunch(APP_KEY, auto_launch)
-        if int(err) != 0:
-            raise RuntimeError(f"SetApplicationAutoLaunch failed: {err}")
+        if remove_err is None:
+            log_event(
+                "warning",
+                "steamvr_install_skip",
+                action="RemoveApplicationManifest",
+                error="method_not_available",
+            )
+        add_err = call_vrapp_method(
+            apps,
+            ("AddApplicationManifest", "add_application_manifest"),
+            str(manifest_path),
+            False,
+        )
+        if add_err is None:
+            raise RuntimeError("AddApplicationManifest not available")
+        if int(add_err) != 0:
+            raise RuntimeError(f"AddApplicationManifest failed: {add_err}")
+        auto_err = call_vrapp_method(
+            apps,
+            ("SetApplicationAutoLaunch", "set_application_auto_launch"),
+            APP_KEY,
+            auto_launch,
+        )
+        if auto_err is None:
+            raise RuntimeError("SetApplicationAutoLaunch not available")
+        if int(auto_err) != 0:
+            raise RuntimeError(f"SetApplicationAutoLaunch failed: {auto_err}")
     finally:
         openvr.shutdown()
 
@@ -139,39 +168,49 @@ def unregister_manifest(manifest_path: Path, allow_missing: bool = False) -> Non
     openvr.init(openvr.VRApplication_Utility)
     try:
         apps = openvr.VRApplications()
-        err = apps.SetApplicationAutoLaunch(APP_KEY, False)
-        if int(err) != 0 and not allow_missing:
-            raise RuntimeError(f"SetApplicationAutoLaunch failed: {err}")
-        if int(err) != 0 and allow_missing:
+        auto_err = call_vrapp_method(
+            apps,
+            ("SetApplicationAutoLaunch", "set_application_auto_launch"),
+            APP_KEY,
+            False,
+        )
+        if auto_err is None:
             log_event(
                 "warning",
                 "steamvr_uninstall_skip",
                 action="SetApplicationAutoLaunch",
-                error=int(err),
+                error="method_not_available",
             )
-        remove_manifest = get_vrapp_method(
+        elif int(auto_err) != 0 and not allow_missing:
+            raise RuntimeError(f"SetApplicationAutoLaunch failed: {auto_err}")
+        elif int(auto_err) != 0 and allow_missing:
+            log_event(
+                "warning",
+                "steamvr_uninstall_skip",
+                action="SetApplicationAutoLaunch",
+                error=int(auto_err),
+            )
+        remove_err = call_vrapp_method(
             apps,
-            "RemoveApplicationManifest",
-            "remove_application_manifest",
+            ("RemoveApplicationManifest", "remove_application_manifest"),
+            str(manifest_path),
         )
-        if remove_manifest is None:
+        if remove_err is None:
             log_event(
                 "warning",
                 "steamvr_uninstall_skip",
                 action="RemoveApplicationManifest",
                 error="method_not_available",
             )
-        else:
-            err = remove_manifest(str(manifest_path))
-            if int(err) != 0 and not allow_missing:
-                raise RuntimeError(f"RemoveApplicationManifest failed: {err}")
-            if int(err) != 0 and allow_missing:
-                log_event(
-                    "warning",
-                    "steamvr_uninstall_skip",
-                    action="RemoveApplicationManifest",
-                    error=int(err),
-                )
+        elif int(remove_err) != 0 and not allow_missing:
+            raise RuntimeError(f"RemoveApplicationManifest failed: {remove_err}")
+        elif int(remove_err) != 0 and allow_missing:
+            log_event(
+                "warning",
+                "steamvr_uninstall_skip",
+                action="RemoveApplicationManifest",
+                error=int(remove_err),
+            )
     finally:
         openvr.shutdown()
 
