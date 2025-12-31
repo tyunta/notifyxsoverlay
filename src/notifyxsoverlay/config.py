@@ -23,6 +23,7 @@ def default_config() -> dict[str, Any]:
         },
         "xs_overlay": {
             "ws_url": DEFAULT_WS_URL,
+            "notification_timeout_seconds": 3.0,
         },
         "poll_interval_seconds": 1.0,
     }
