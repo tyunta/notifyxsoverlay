@@ -280,7 +280,7 @@ def _safe_notification_opacity(value: Any) -> float:
         if value is None:
             return 0.6
         opacity = float(value)
-        return opacity if 0.0 < opacity <= 1.0 else 0.6
+        return opacity if 0.0 <= opacity <= 1.0 else 0.6
     except Exception:
         return 0.6
 

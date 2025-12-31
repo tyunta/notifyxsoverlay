@@ -71,9 +71,10 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay run
 - 初回起動時に設定ファイルが生成されます。`filters.allow` / `filters.block` にアプリIDを追加して制御できます。
 - 既定の許可リストには Discord（`com.squirrel.Discord.Discord`）を含めています。
 - 通知の表示時間は `xs_overlay.notification_timeout_seconds`（秒）で調整できます（既定 3.0 秒）。
-- 通知の透明度は `xs_overlay.notification_opacity`（0.0〜1.0）で調整できます（既定 0.6）。
+- 通知の透明度は `xs_overlay.notification_opacity`（0.0〜1.0）で調整できます（0.0で完全透明、既定 0.6）。
 - 設定ファイルは保存時に `config.json.bak` を作成し、破損時は自動復旧を試みます。
 - 読み込み不能な設定が続く場合は、最後に読み込めた設定を保持します。
+- 本体/バックアップの両方が壊れている場合は、`config.json.corrupt` に退避します。
 - `poll_interval_seconds` の既定値は `1.0` 秒です。
 
 ## 仕様メモ

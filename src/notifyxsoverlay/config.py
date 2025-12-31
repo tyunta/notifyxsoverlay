@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from .log import log_event
 DEFAULT_WS_URL = f"ws://127.0.0.1:42070/?client={APP_NAME}"
 BACKUP_SUFFIX = ".bak"
 TEMP_SUFFIX = ".tmp"
+_SAVE_FAIL_STATE = {"last_log_at": 0.0, "interval_seconds": 30.0}
 
 
 def default_config() -> dict[str, Any]:
@@ -115,6 +117,18 @@ def load_config(path: Path, fallback: dict[str, Any] | None = None) -> dict[str,
             log_event("error", "config_restore_failed", error=str(exc))
         return normalized
     log_event("warning", "config_invalid", path=str(path))
+    if path.exists():
+        try:
+            corrupted_path = path.with_suffix(path.suffix + ".corrupt")
+            path.replace(corrupted_path)
+            log_event(
+                "warning",
+                "config_corrupt_renamed",
+                from_path=str(path),
+                to_path=str(corrupted_path),
+            )
+        except Exception as exc:
+            log_event("warning", "config_corrupt_rename_failed", error=str(exc), path=str(path))
     if fallback is not None:
         return fallback
     return default_config()
@@ -137,7 +151,10 @@ def save_config(path: Path, data: dict[str, Any]) -> None:
     try:
         _write_text_atomic(path, serialized, backup=True)
     except Exception as exc:
-        log_event("warning", "config_save_failed", error=str(exc), path=str(path))
+        now = time.time()
+        if now - _SAVE_FAIL_STATE["last_log_at"] >= _SAVE_FAIL_STATE["interval_seconds"]:
+            log_event("warning", "config_save_failed", error=str(exc), path=str(path))
+            _SAVE_FAIL_STATE["last_log_at"] = now
 
 
 def reset_learning_state(config: dict[str, Any], session_id: str) -> bool:
