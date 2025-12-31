@@ -11,7 +11,7 @@ from typing import Any
 
 APP_KEY = "com.tyunta.notifyxoverlay"
 APP_NAME = "NotifyXOverlay"
-DEFAULT_REPO = "git+https://github.com/tyunta/notifyxoverlay"
+DEFAULT_REPO = "git+https://github.com/tyunta/notifyxsoverlay"
 
 
 def log_event(level: str, event: str, **fields: Any) -> None:
@@ -44,19 +44,23 @@ def normalize_repo(repo: str) -> str:
     return repo
 
 
-def resolve_uvx_path(explicit_path: str | None) -> str:
+def resolve_uvx_path(explicit_path: str | None) -> tuple[str, bool]:
     if explicit_path:
-        return explicit_path
+        return explicit_path, True
     detected = shutil.which("uvx")
-    return detected or "uvx"
+    if detected:
+        return detected, True
+    return "uvx", False
 
 
-def write_wrapper(wrapper_path: Path, repo: str, uvx_path: str | None) -> None:
-    uvx_exe = resolve_uvx_path(uvx_path)
+def write_wrapper(wrapper_path: Path, repo: str, uvx_exe: str) -> None:
     wrapper_content = (
         "@echo off\n"
         "setlocal\n"
-        f"\"{uvx_exe}\" --from \"{repo}\" notifyxoverlay run\n"
+        f"\"{uvx_exe}\" --refresh --from \"{repo}\" notifyxoverlay run\n"
+        "if errorlevel 1 (\n"
+        f"  \"{uvx_exe}\" --from \"{repo}\" notifyxoverlay run\n"
+        ")\n"
     )
     wrapper_path.write_text(wrapper_content, encoding="utf-8")
 
@@ -116,6 +120,7 @@ def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
     openvr.init(openvr.VRApplication_Utility)
     try:
         apps = openvr.VRApplications()
+        apps.RemoveApplicationManifest(str(manifest_path))
         err = apps.AddApplicationManifest(str(manifest_path), False)
         if int(err) != 0:
             raise RuntimeError(f"AddApplicationManifest failed: {err}")
@@ -126,7 +131,7 @@ def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
         openvr.shutdown()
 
 
-def unregister_manifest(manifest_path: Path) -> None:
+def unregister_manifest(manifest_path: Path, allow_missing: bool = False) -> None:
     openvr = with_openvr()
     if openvr is None:
         raise RuntimeError("openvr module not available")
@@ -135,11 +140,25 @@ def unregister_manifest(manifest_path: Path) -> None:
     try:
         apps = openvr.VRApplications()
         err = apps.SetApplicationAutoLaunch(APP_KEY, False)
-        if int(err) != 0:
+        if int(err) != 0 and not allow_missing:
             raise RuntimeError(f"SetApplicationAutoLaunch failed: {err}")
+        if int(err) != 0 and allow_missing:
+            log_event(
+                "warning",
+                "steamvr_uninstall_skip",
+                action="SetApplicationAutoLaunch",
+                error=int(err),
+            )
         err = apps.RemoveApplicationManifest(str(manifest_path))
-        if int(err) != 0:
+        if int(err) != 0 and not allow_missing:
             raise RuntimeError(f"RemoveApplicationManifest failed: {err}")
+        if int(err) != 0 and allow_missing:
+            log_event(
+                "warning",
+                "steamvr_uninstall_skip",
+                action="RemoveApplicationManifest",
+                error=int(err),
+            )
     finally:
         openvr.shutdown()
 
@@ -152,7 +171,16 @@ def cmd_install(args: argparse.Namespace) -> int:
     wrapper_path = get_wrapper_path(app_dir)
     manifest_path = get_manifest_path(app_dir)
 
-    write_wrapper(wrapper_path, repo, args.uvx_path)
+    uvx_exe, uvx_found = resolve_uvx_path(args.uvx_path)
+    if not uvx_found:
+        log_event(
+            "error",
+            "uvx_not_found",
+            hint="Install uv or pass --uvx-path to a valid uvx executable.",
+        )
+        return 1
+
+    write_wrapper(wrapper_path, repo, uvx_exe)
     write_manifest(manifest_path, wrapper_path)
 
     try:
@@ -173,21 +201,28 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     app_dir = get_app_dir()
     wrapper_path = get_wrapper_path(app_dir)
     manifest_path = get_manifest_path(app_dir)
-
-    if not manifest_path.exists():
+    manifest_missing = not manifest_path.exists()
+    if manifest_missing:
         log_event("warning", "manifest_missing", manifest=str(manifest_path))
-    else:
-        try:
-            unregister_manifest(manifest_path)
-            log_event("info", "steamvr_uninstall_ok", app_key=APP_KEY)
-        except Exception as exc:
-            log_event(
-                "error",
-                "steamvr_uninstall_failed",
-                error=str(exc),
-                hint="Start SteamVR and retry, or remove the manifest manually.",
-            )
-            return 1
+
+    error: Exception | None = None
+    try:
+        unregister_manifest(manifest_path, allow_missing=manifest_missing)
+        log_event(
+            "info",
+            "steamvr_uninstall_ok",
+            app_key=APP_KEY,
+            manifest=str(manifest_path),
+            manifest_missing=manifest_missing,
+        )
+    except Exception as exc:
+        log_event(
+            "error",
+            "steamvr_uninstall_failed",
+            error=str(exc),
+            hint="Start SteamVR and retry, or remove the manifest manually.",
+        )
+        error = exc
 
     if wrapper_path.exists():
         wrapper_path.unlink()
@@ -199,7 +234,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     except OSError:
         pass
 
-    return 0
+    return 0 if error is None else 1
 
 
 def cmd_run(args: argparse.Namespace) -> int:
