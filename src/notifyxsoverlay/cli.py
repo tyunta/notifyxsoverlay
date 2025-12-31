@@ -72,8 +72,9 @@ def build_manifest(binary_path: Path, arguments: str) -> dict[str, Any]:
     }
 
 
-def build_uvx_arguments(repo: str) -> str:
-    return f'--refresh --from "{repo}" {APP_COMMAND} run'
+def build_uvx_arguments(repo: str, quote_repo: bool = True) -> str:
+    repo_value = f'"{repo}"' if quote_repo else repo
+    return f"--refresh --from {repo_value} {APP_COMMAND} run"
 
 
 def get_cmd_exe() -> Path:
@@ -83,18 +84,30 @@ def get_cmd_exe() -> Path:
     return Path(r"C:\Windows\System32\cmd.exe")
 
 
-def build_manifest_launch(uvx_exe: Path, repo: str) -> tuple[Path, str]:
-    args = build_uvx_arguments(repo)
+def build_manifest_variants(
+    uvx_exe: Path,
+    repo: str,
+    wrapper_path: Path,
+) -> list[tuple[str, Path, str]]:
+    args_plain = build_uvx_arguments(repo, quote_repo=False)
+    args_quoted = build_uvx_arguments(repo, quote_repo=True)
+    variants: list[tuple[str, Path, str]] = []
     if uvx_exe.suffix.lower() == ".exe":
-        return uvx_exe, args
+        variants.append(("uvx_direct", uvx_exe, args_plain))
+        variants.append(("uvx_direct_quoted", uvx_exe, args_quoted))
     cmd_exe = get_cmd_exe()
-    cmd_args = f'/c "{uvx_exe}" {args}'
-    return cmd_exe, cmd_args
+    variants.append(("cmd_uvx_plain", cmd_exe, f'/c "{uvx_exe}" {args_plain}'))
+    variants.append(("cmd_uvx_quoted", cmd_exe, f'/c "{uvx_exe}" {args_quoted}'))
+    variants.append(("cmd_wrapper", cmd_exe, f'/c "{wrapper_path}"'))
+    return variants
 
 
-def write_manifest(manifest_path: Path, uvx_exe: str, repo: str) -> None:
-    binary_path, args = build_manifest_launch(Path(uvx_exe), repo)
-    manifest = build_manifest(binary_path, args)
+def write_manifest_variant(
+    manifest_path: Path,
+    binary_path: Path,
+    arguments: str,
+) -> None:
+    manifest = build_manifest(binary_path, arguments)
     manifest_path.write_text(
         json.dumps(manifest, indent=2),
         encoding="utf-8",
@@ -178,7 +191,11 @@ def call_vrapp_method(
     return int(result)
 
 
-def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
+def register_manifest(
+    manifest_path: Path,
+    auto_launch: bool,
+    variants: list[tuple[str, Path, str]],
+) -> None:
     openvr = with_openvr()
     if openvr is None:
         raise RuntimeError("openvr module not available")
@@ -199,35 +216,75 @@ def register_manifest(manifest_path: Path, auto_launch: bool) -> None:
                 action="RemoveApplicationManifest",
                 error="method_not_available",
             )
-        add_err = call_vrapp_method(
-            apps,
-            ("AddApplicationManifest", "add_application_manifest", "addApplicationManifest"),
-            ("add", "application", "manifest"),
-            str(manifest_path),
-            False,
-        )
-        if add_err is None:
-            available = summarize_vrapp_methods(apps)
-            if available:
-                log_event(
-                    "warning",
-                    "steamvr_install_methods",
-                    available=available,
+        invalid_error = getattr(openvr, "ApplicationError_InvalidManifest", None)
+        last_invalid: Exception | None = None
+        for variant, binary_path, arguments in variants:
+            write_manifest_variant(manifest_path, binary_path, arguments)
+            try:
+                add_err = call_vrapp_method(
+                    apps,
+                    ("AddApplicationManifest", "add_application_manifest", "addApplicationManifest"),
+                    ("add", "application", "manifest"),
+                    str(manifest_path),
+                    False,
                 )
-            raise RuntimeError("AddApplicationManifest not available")
-        if int(add_err) != 0:
-            raise RuntimeError(f"AddApplicationManifest failed: {add_err}")
-        auto_err = call_vrapp_method(
-            apps,
-            ("SetApplicationAutoLaunch", "set_application_auto_launch", "setApplicationAutoLaunch"),
-            ("set", "application", "auto", "launch"),
-            APP_KEY,
-            auto_launch,
-        )
-        if auto_err is None:
-            raise RuntimeError("SetApplicationAutoLaunch not available")
-        if int(auto_err) != 0:
-            raise RuntimeError(f"SetApplicationAutoLaunch failed: {auto_err}")
+            except Exception as exc:  # pragma: no cover - depends on OpenVR binding
+                if type(exc).__name__ == "ApplicationError_InvalidManifest":
+                    log_event(
+                        "warning",
+                        "steamvr_manifest_rejected",
+                        variant=variant,
+                        binary_path=str(binary_path),
+                        arguments=arguments,
+                        error_type=type(exc).__name__,
+                        error_repr=repr(exc),
+                    )
+                    last_invalid = exc
+                    continue
+                raise
+            if add_err is None:
+                available = summarize_vrapp_methods(apps)
+                if available:
+                    log_event(
+                        "warning",
+                        "steamvr_install_methods",
+                        available=available,
+                    )
+                raise RuntimeError("AddApplicationManifest not available")
+            if int(add_err) != 0:
+                if invalid_error is not None and int(add_err) == int(invalid_error):
+                    log_event(
+                        "warning",
+                        "steamvr_manifest_rejected",
+                        variant=variant,
+                        binary_path=str(binary_path),
+                        arguments=arguments,
+                        error=int(add_err),
+                    )
+                    last_invalid = RuntimeError(f"AddApplicationManifest failed: {add_err}")
+                    continue
+                raise RuntimeError(f"AddApplicationManifest failed: {add_err}")
+            auto_err = call_vrapp_method(
+                apps,
+                ("SetApplicationAutoLaunch", "set_application_auto_launch", "setApplicationAutoLaunch"),
+                ("set", "application", "auto", "launch"),
+                APP_KEY,
+                auto_launch,
+            )
+            if auto_err is None:
+                raise RuntimeError("SetApplicationAutoLaunch not available")
+            if int(auto_err) != 0:
+                raise RuntimeError(f"SetApplicationAutoLaunch failed: {auto_err}")
+            log_event(
+                "info",
+                "steamvr_manifest_selected",
+                variant=variant,
+                binary_path=str(binary_path),
+            )
+            return
+        if last_invalid is not None:
+            raise last_invalid
+        raise RuntimeError("AddApplicationManifest failed for all variants")
     finally:
         openvr.shutdown()
 
@@ -307,21 +364,19 @@ def cmd_install(args: argparse.Namespace) -> int:
         return 1
 
     write_wrapper(wrapper_path, repo, uvx_exe)
-    write_manifest(manifest_path, uvx_exe, repo)
+    variants = build_manifest_variants(Path(uvx_exe), repo, wrapper_path)
 
     try:
-        register_manifest(manifest_path, auto_launch=True)
+        register_manifest(manifest_path, auto_launch=True, variants=variants)
         log_event("info", "steamvr_install_ok", app_key=APP_KEY, manifest=str(manifest_path))
         return 0
     except Exception as exc:
-        binary_path, launch_args = build_manifest_launch(Path(uvx_exe), repo)
         error_payload = {
             "error": str(exc),
             "error_type": type(exc).__name__,
             "error_repr": repr(exc),
             "manifest": str(manifest_path),
-            "binary_path": str(binary_path),
-            "arguments": launch_args,
+            "variants": [variant for variant, _, _ in variants],
         }
         log_event(
             "error",
