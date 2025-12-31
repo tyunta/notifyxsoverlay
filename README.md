@@ -29,7 +29,7 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay install
 
 - これにより SteamVR の Startup Overlay Apps に登録され、自動起動が有効になります。
 - 起動時は `uvx --refresh` で更新を確認し、失敗時はキャッシュで起動します。
-- SteamVR起動ユーザーのPATHに `uvx` が無い場合は、`--uvx-path` を指定してください。
+- SteamVR起動ユーザーのPATHに `uvx` が無い場合は、`--uvx-path` を指定してください（例: `--uvx-path "C:\Users\YOURNAME\.local\bin\uvx"`）。
 - 解除する場合は次を実行します。
 
 ```powershell
@@ -43,22 +43,33 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay run
 ```
 
 ### フィルタ仕様（予定）
-評価順と優先度は次の通りです。
 
+#### 学習モード有効時
 1. ブロックリストに一致した通知は常に除外する。
-2. 許可リストが空でない場合は、許可リストに一致した通知のみ通す。
-3. 許可リストが空の場合は、ブロックリストに該当しない通知を通す。
+2. 許可リストに一致した通知は常に通す。
+3. 未分類の通知は学習モードで扱う。
+   - その日初回なら表示し、「未分類一覧」に記録する。
+   - 同一日は2回目以降を抑制する。
+
+#### 学習モード無効時
+1. ブロックリストに一致した通知は常に除外する。
+2. 許可リストが空でないときは、許可リストに一致した通知のみ通す。
+3. 許可リストが空のときは、ブロックリストに該当しない通知を通す。
 
 #### 学習モード（初期運用の方針）
-- 初期状態は「学習モード」を想定し、未分類の通知は一旦表示する。
+- 初期状態は「学習モード」を想定する。
 - 未分類の通知元は「未分類一覧」に蓄積し、後から許可/拒否へ移動できるようにする。
-- 未分類の通知は「アプリごとに1日1回だけ表示」し、同一日の2回目以降は抑制する。
 - 未分類一覧は24時間でクリアし、翌日は再び初回表示される。
 - 判定は厳密なアプリ識別子で行い、ユーザーには分かりやすいアプリ名も並列で表示する。
 
 ## セットアップ/運用メモ
-- Windows通知リスナーはユーザー許可が必要です。
-- XSOverlayとの通信は公式API（WebSocket）に準拠します。
+- Windows通知リスナーはユーザー許可が必要です。初回起動時の許可ダイアログで許可してください。
+- 通知アクセスが拒否された場合は、Windows設定で通知へのアクセスを許可して再起動してください。
+- UserNotificationListener は「パッケージ化アプリ + マニフェスト権限」が前提です。`uvx` だけで起動した場合、通知取得が拒否される可能性があります（将来的にMSIX化が必要になる可能性があります）。
+- XSOverlayとの通信は公式API（WebSocket）に準拠します。XSOverlayが起動していないと送信に失敗します。
+- 通信先は `ws://127.0.0.1:42070` を想定しています。ポートを変更した場合は `--ws-url` か設定ファイルで上書きしてください。
+- 初回起動時に設定ファイルが生成されます。`filters.allow` / `filters.block` にアプリIDを追加して制御できます。
+- `poll_interval_seconds` の既定値は `1.0` 秒です。
 
 ## 仕様メモ
 - アプリキー: `com.tyunta.notifyxsoverlay`
@@ -66,6 +77,23 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay run
 - 生成先は `%LOCALAPPDATA%\NotifyXSOverlay` です。
 - 設定ファイルは `%LOCALAPPDATA%\NotifyXSOverlay\config.json` を想定します。
 
-
-
-
+### 設定ファイル例
+```json
+{
+  "filters": {
+    "allow": [
+      "com.example.app"
+    ],
+    "block": [
+      "com.example.noise"
+    ]
+  },
+  "learning": {
+    "enabled": true
+  },
+  "xs_overlay": {
+    "ws_url": "ws://127.0.0.1:42070/?client=NotifyXSOverlay"
+  },
+  "poll_interval_seconds": 1.0
+}
+```

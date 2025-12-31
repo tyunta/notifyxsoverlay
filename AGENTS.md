@@ -67,4 +67,3 @@ AGENTS.md is UTF-8. If mojibake, reopen as UTF-8.
 
 ## 優先順位
 - 仕様の最終版は `README.md`、運用ルールの最終版は `AGENTS.md` とする。
-

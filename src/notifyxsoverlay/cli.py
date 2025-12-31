@@ -1,44 +1,24 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
-import sys
 import shutil
-import threading
 from pathlib import Path
 from typing import Any
 
-APP_KEY = "com.tyunta.notifyxsoverlay"
-APP_NAME = "NotifyXSOverlay"
-APP_DIR_NAME = "NotifyXSOverlay"
-APP_COMMAND = "notifyxsoverlay"
-WRAPPER_NAME = "notifyxsoverlay.cmd"
-MANIFEST_NAME = "notifyxsoverlay.vrmanifest"
-DEFAULT_REPO = "git+https://github.com/tyunta/notifyxsoverlay"
-
-
-def log_event(level: str, event: str, **fields: Any) -> None:
-    payload = {"level": level, "event": event}
-    payload.update(fields)
-    print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
-
-
-def get_app_dir() -> Path:
-    root = os.environ.get("LOCALAPPDATA")
-    if not root:
-        root = str(Path.home() / "AppData" / "Local")
-    return Path(root) / APP_DIR_NAME
-
-
-def get_wrapper_path(app_dir: Path) -> Path:
-    return app_dir / WRAPPER_NAME
-
-
-def get_manifest_path(app_dir: Path) -> Path:
-    return app_dir / MANIFEST_NAME
-
-
+from .app import (
+    APP_COMMAND,
+    APP_KEY,
+    APP_NAME,
+    DEFAULT_REPO,
+    get_app_dir,
+    get_manifest_path,
+    get_wrapper_path,
+)
+from .bridge import run_bridge
+from .log import log_event
 
 
 def normalize_repo(repo: str) -> str:
@@ -244,12 +224,8 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    log_event("info", "run_start", app_key=APP_KEY)
-    log_event("info", "run_note", detail="Notification bridge is not implemented yet.")
-
-    stop_event = threading.Event()
     try:
-        stop_event.wait()
+        return asyncio.run(run_bridge(ws_url=args.ws_url, poll_interval=args.poll_interval))
     except KeyboardInterrupt:
         log_event("info", "run_stop")
     return 0
@@ -260,6 +236,17 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Run the notification bridge")
+    run.add_argument(
+        "--ws-url",
+        default=None,
+        help="Override XSOverlay WebSocket URL",
+    )
+    run.add_argument(
+        "--poll-interval",
+        type=float,
+        default=None,
+        help="Notification polling interval in seconds",
+    )
     run.set_defaults(func=cmd_run)
 
     install = sub.add_parser("install-steamvr", help="Register as SteamVR startup overlay")
