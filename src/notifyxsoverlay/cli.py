@@ -53,14 +53,14 @@ def write_wrapper(wrapper_path: Path, repo: str, uvx_exe: str) -> None:
 
 def build_manifest(binary_path: Path, arguments: str) -> dict[str, Any]:
     return {
-        "source": "builtin",
+        "source": "user",
         "applications": [
             {
                 "app_key": APP_KEY,
                 "launch_type": "binary",
                 "binary_path_windows": str(binary_path),
+                "working_directory": str(binary_path.parent),
                 "arguments": arguments,
-                "action_manifest_path": "none",
                 "is_dashboard_overlay": True,
                 "strings": {
                     "en_us": {
