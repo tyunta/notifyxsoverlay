@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "notifyxoverlay"
+name = "notifyxsoverlay"
 version = "0.1.0"
 description = "Bridge Windows notifications to XSOverlay with app-based filtering."
 readme = "README.md"
@@ -13,10 +13,10 @@ dependencies = [
 ]
 
 [project.scripts]
-notifyxoverlay = "notifyxoverlay.cli:main"
+notifyxsoverlay = "notifyxsoverlay.cli:main"
 
 [tool.hatchling.build.targets.wheel]
-packages = ["src/notifyxoverlay"]
+packages = ["src/notifyxsoverlay"]
 
 [tool.hatchling.build.targets.sdist]
-include = ["src/notifyxoverlay", "README.md", "pyproject.toml"]
+include = ["src/notifyxsoverlay", "README.md", "pyproject.toml"]

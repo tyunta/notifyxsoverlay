@@ -9,8 +9,12 @@ import threading
 from pathlib import Path
 from typing import Any
 
-APP_KEY = "com.tyunta.notifyxoverlay"
-APP_NAME = "NotifyXOverlay"
+APP_KEY = "com.tyunta.notifyxsoverlay"
+APP_NAME = "NotifyXSOverlay"
+APP_DIR_NAME = "NotifyXSOverlay"
+APP_COMMAND = "notifyxsoverlay"
+WRAPPER_NAME = "notifyxsoverlay.cmd"
+MANIFEST_NAME = "notifyxsoverlay.vrmanifest"
 DEFAULT_REPO = "git+https://github.com/tyunta/notifyxsoverlay"
 
 
@@ -24,15 +28,17 @@ def get_app_dir() -> Path:
     root = os.environ.get("LOCALAPPDATA")
     if not root:
         root = str(Path.home() / "AppData" / "Local")
-    return Path(root) / APP_NAME
+    return Path(root) / APP_DIR_NAME
 
 
 def get_wrapper_path(app_dir: Path) -> Path:
-    return app_dir / "notifyxoverlay.cmd"
+    return app_dir / WRAPPER_NAME
 
 
 def get_manifest_path(app_dir: Path) -> Path:
-    return app_dir / "notifyxoverlay.vrmanifest"
+    return app_dir / MANIFEST_NAME
+
+
 
 
 def normalize_repo(repo: str) -> str:
@@ -57,9 +63,9 @@ def write_wrapper(wrapper_path: Path, repo: str, uvx_exe: str) -> None:
     wrapper_content = (
         "@echo off\n"
         "setlocal\n"
-        f"\"{uvx_exe}\" --refresh --from \"{repo}\" notifyxoverlay run\n"
+        f"\"{uvx_exe}\" --refresh --from \"{repo}\" {APP_COMMAND} run\n"
         "if errorlevel 1 (\n"
-        f"  \"{uvx_exe}\" --from \"{repo}\" notifyxoverlay run\n"
+        f"  \"{uvx_exe}\" --from \"{repo}\" {APP_COMMAND} run\n"
         ")\n"
     )
     wrapper_path.write_text(wrapper_content, encoding="utf-8")
@@ -74,7 +80,7 @@ def get_cmd_exe() -> Path:
 
 def build_manifest(binary_path: Path, arguments: str) -> dict[str, Any]:
     return {
-        "source": "notifyxoverlay",
+        "source": APP_COMMAND,
         "applications": [
             {
                 "app_key": APP_KEY,
@@ -250,7 +256,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="notifyxoverlay")
+    parser = argparse.ArgumentParser(prog=APP_COMMAND)
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Run the notification bridge")

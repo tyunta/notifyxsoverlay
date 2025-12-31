@@ -1,4 +1,4 @@
-﻿# NotifyXOverlay
+# NotifyXSOverlay
 
 Windowsの通知をXSOverlayへ中継し、VR内で確実に視認できるようにするツールです。
 通知元アプリのフィルタリングを中核機能とします。
@@ -24,7 +24,7 @@ Windowsの通知をXSOverlayへ中継し、VR内で確実に視認できるよ�
 SteamVRが起動している状態で実行してください。
 
 ```powershell
-uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxoverlay install-steamvr
+uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay install-steamvr
 ```
 
 - これにより SteamVR の Startup Overlay Apps に登録され、自動起動が有効になります。
@@ -33,13 +33,13 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxoverlay install-
 - 解除する場合は次を実行します。
 
 ```powershell
-uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxoverlay uninstall-steamvr
+uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay uninstall-steamvr
 ```
 
 ### 2) 手動で起動する
 
 ```powershell
-uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxoverlay run
+uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay run
 ```
 
 ### フィルタ仕様（予定）
@@ -49,11 +49,23 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxoverlay run
 2. 許可リストが空でない場合は、許可リストに一致した通知のみ通す。
 3. 許可リストが空の場合は、ブロックリストに該当しない通知を通す。
 
+#### 学習モード（初期運用の方針）
+- 初期状態は「学習モード」を想定し、未分類の通知は一旦表示する。
+- 未分類の通知元は「未分類一覧」に蓄積し、後から許可/拒否へ移動できるようにする。
+- 未分類の通知は「アプリごとに1日1回だけ表示」し、同一日の2回目以降は抑制する。
+- 未分類一覧は24時間でクリアし、翌日は再び初回表示される。
+- 判定は厳密なアプリ識別子で行い、ユーザーには分かりやすいアプリ名も並列で表示する。
+
 ## セットアップ/運用メモ
 - Windows通知リスナーはユーザー許可が必要です。
 - XSOverlayとの通信は公式API（WebSocket）に準拠します。
 
 ## 仕様メモ
-- アプリキー: `com.tyunta.notifyxoverlay`
-- インストール時に `notifyxoverlay.cmd` と `notifyxoverlay.vrmanifest` を生成します。
-- 生成先は `%LOCALAPPDATA%\NotifyXOverlay` です。
+- アプリキー: `com.tyunta.notifyxsoverlay`
+- インストール時に `notifyxsoverlay.cmd` と `notifyxsoverlay.vrmanifest` を生成します。
+- 生成先は `%LOCALAPPDATA%\NotifyXSOverlay` です。
+- 設定ファイルは `%LOCALAPPDATA%\NotifyXSOverlay\config.json` を想定します。
+
+
+
+

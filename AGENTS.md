@@ -1,13 +1,13 @@
 AGENTS.md is UTF-8. If mojibake, reopen as UTF-8.
 
-# NotifyXOverlay 憲法
+# NotifyXSOverlay 憲法
 
 ## 目的
-- Windowsの通知をXOverlayへ中継し、VR内で確実に視認できるようにする。
+- Windowsの通知をXSOverlayへ中継し、VR内で確実に視認できるようにする。
 - 既存アプリとの差別化として、通知元アプリのフィルタリングを中核機能とする。
 
 ## やること
-- Windows通知の取得、整形、XOverlayへの送信を安定動作させる。
+- Windows通知の取得、整形、XSOverlayへの送信を安定動作させる。
 - 通知元アプリの許可/拒否フィルタを提供し、ユーザーが安全に制御できるようにする。
 - 失敗時はログとリトライ方針を明確化し、静かな失敗を避ける。
 
@@ -43,7 +43,7 @@ AGENTS.md is UTF-8. If mojibake, reopen as UTF-8.
 
 ## セットアップ制約
 - Windows通知APIの権限や設定に依存する場合はREADMEに記載する。
-- XOverlayとの連携は公式手段に従い、必要な設定値は明示する。
+- XSOverlayとの連携は公式手段に従い、必要な設定値は明示する。
 
 ## 変更時の最低チェック
 - READMEの該当箇所を更新する。
@@ -67,3 +67,4 @@ AGENTS.md is UTF-8. If mojibake, reopen as UTF-8.
 
 ## 優先順位
 - 仕様の最終版は `README.md`、運用ルールの最終版は `AGENTS.md` とする。
+
