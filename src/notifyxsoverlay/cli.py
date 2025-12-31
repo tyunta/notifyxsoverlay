@@ -60,7 +60,7 @@ def get_cmd_exe() -> Path:
 
 def build_manifest(binary_path: Path, arguments: str) -> dict[str, Any]:
     return {
-        "source": APP_COMMAND,
+        "source": "builtin",
         "applications": [
             {
                 "app_key": APP_KEY,
