@@ -69,6 +69,7 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay run
 - XSOverlayとの通信は公式API（WebSocket）に準拠します。XSOverlayが起動していないと送信に失敗します。
 - 通信先は `ws://127.0.0.1:42070` を想定しています。ポートを変更した場合は `--ws-url` か設定ファイルで上書きしてください。
 - 初回起動時に設定ファイルが生成されます。`filters.allow` / `filters.block` にアプリIDを追加して制御できます。
+- 既定の許可リストには Discord（`com.squirrel.Discord.Discord`）を含めています。
 - `poll_interval_seconds` の既定値は `1.0` 秒です。
 
 ## 仕様メモ
@@ -82,6 +83,7 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay run
 {
   "filters": {
     "allow": [
+      "com.squirrel.Discord.Discord",
       "com.example.app"
     ],
     "block": [

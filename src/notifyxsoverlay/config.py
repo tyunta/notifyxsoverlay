@@ -13,7 +13,7 @@ DEFAULT_WS_URL = f"ws://127.0.0.1:42070/?client={APP_NAME}"
 def default_config() -> dict[str, Any]:
     return {
         "filters": {
-            "allow": [],
+            "allow": ["com.squirrel.Discord.Discord"],
             "block": [],
         },
         "learning": {
