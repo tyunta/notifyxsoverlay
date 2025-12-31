@@ -60,6 +60,7 @@ def build_manifest(binary_path: Path, arguments: str) -> dict[str, Any]:
                 "launch_type": "binary",
                 "binary_path_windows": str(binary_path),
                 "arguments": arguments,
+                "action_manifest_path": "none",
                 "is_dashboard_overlay": True,
                 "strings": {
                     "en_us": {
