@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -75,9 +76,25 @@ def build_uvx_arguments(repo: str) -> str:
     return f'--refresh --from "{repo}" {APP_COMMAND} run'
 
 
-def write_manifest(manifest_path: Path, uvx_exe: str, repo: str) -> None:
+def get_cmd_exe() -> Path:
+    comspec = os.environ.get("ComSpec")
+    if comspec:
+        return Path(comspec)
+    return Path(r"C:\Windows\System32\cmd.exe")
+
+
+def build_manifest_launch(uvx_exe: Path, repo: str) -> tuple[Path, str]:
     args = build_uvx_arguments(repo)
-    manifest = build_manifest(Path(uvx_exe), args)
+    if uvx_exe.suffix.lower() == ".exe":
+        return uvx_exe, args
+    cmd_exe = get_cmd_exe()
+    cmd_args = f'/c "{uvx_exe}" {args}'
+    return cmd_exe, cmd_args
+
+
+def write_manifest(manifest_path: Path, uvx_exe: str, repo: str) -> None:
+    binary_path, args = build_manifest_launch(Path(uvx_exe), repo)
+    manifest = build_manifest(binary_path, args)
     manifest_path.write_text(
         json.dumps(manifest, indent=2),
         encoding="utf-8",
@@ -297,10 +314,14 @@ def cmd_install(args: argparse.Namespace) -> int:
         log_event("info", "steamvr_install_ok", app_key=APP_KEY, manifest=str(manifest_path))
         return 0
     except Exception as exc:
+        binary_path, launch_args = build_manifest_launch(Path(uvx_exe), repo)
         error_payload = {
             "error": str(exc),
             "error_type": type(exc).__name__,
             "error_repr": repr(exc),
+            "manifest": str(manifest_path),
+            "binary_path": str(binary_path),
+            "arguments": launch_args,
         }
         log_event(
             "error",
