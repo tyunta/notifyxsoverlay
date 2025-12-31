@@ -183,9 +183,9 @@ def _evaluate_notification(
         if app_key not in pending:
             pending[app_key] = display_name or app_key
             changed = True
-        shown_today = learning.setdefault("shown_today", {})
-        if app_key not in shown_today:
-            shown_today[app_key] = datetime.now().date().isoformat()
+        shown_session = learning.setdefault("shown_session", {})
+        if app_key not in shown_session:
+            shown_session[app_key] = datetime.now().isoformat()
             return True, "learning_allow", True
         return False, "learning_suppress", changed
 
@@ -264,7 +264,8 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
     if poll_interval is not None:
         config["poll_interval_seconds"] = poll_interval
 
-    dirty = reset_learning_state(config)
+    session_id = datetime.now().isoformat()
+    dirty = reset_learning_state(config, session_id)
     if dirty:
         save_config(config_path, config)
 
@@ -309,7 +310,7 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
                             pass
                         websocket = None
                 poll_delay = _safe_poll_interval(config.get("poll_interval_seconds"))
-        if reset_learning_state(config):
+        if reset_learning_state(config, session_id):
             save_config(config_path, config)
 
         try:

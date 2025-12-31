@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +19,7 @@ def default_config() -> dict[str, Any]:
             "enabled": True,
             "last_reset": None,
             "pending": {},
-            "shown_today": {},
+            "shown_session": {},
         },
         "xs_overlay": {
             "ws_url": DEFAULT_WS_URL,
@@ -55,8 +54,15 @@ def normalize_config(data: dict[str, Any]) -> dict[str, Any]:
     learning = merged.get("learning", {})
     if not isinstance(learning.get("pending"), dict):
         learning["pending"] = {}
-    if not isinstance(learning.get("shown_today"), dict):
-        learning["shown_today"] = {}
+    shown_session = learning.get("shown_session")
+    if not isinstance(shown_session, dict):
+        shown_legacy = learning.get("shown_today")
+        if isinstance(shown_legacy, dict):
+            learning["shown_session"] = shown_legacy
+        else:
+            learning["shown_session"] = {}
+    if "shown_today" in learning:
+        learning.pop("shown_today", None)
     merged["filters"] = filters
     merged["learning"] = learning
     return merged
@@ -80,13 +86,11 @@ def save_config(path: Path, data: dict[str, Any]) -> None:
     path.write_text(serialized, encoding="utf-8")
 
 
-def reset_learning_state(config: dict[str, Any]) -> bool:
-    today = date.today().isoformat()
+def reset_learning_state(config: dict[str, Any], session_id: str) -> bool:
     learning = config.get("learning", {})
     last_reset = learning.get("last_reset")
-    if last_reset != today:
-        learning["last_reset"] = today
-        learning["pending"] = {}
-        learning["shown_today"] = {}
+    if last_reset != session_id:
+        learning["last_reset"] = session_id
+        learning["shown_session"] = {}
         return True
     return False
