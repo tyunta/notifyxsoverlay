@@ -92,7 +92,7 @@ def normalize_config(data: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
-def load_config(path: Path) -> dict[str, Any]:
+def load_config(path: Path, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
     if not path.exists():
         return default_config()
     data = _read_json(path)
@@ -115,6 +115,8 @@ def load_config(path: Path) -> dict[str, Any]:
             log_event("error", "config_restore_failed", error=str(exc))
         return normalized
     log_event("warning", "config_invalid", path=str(path))
+    if fallback is not None:
+        return fallback
     return default_config()
 
 
@@ -132,7 +134,10 @@ def _write_text_atomic(path: Path, content: str, backup: bool) -> None:
 
 def save_config(path: Path, data: dict[str, Any]) -> None:
     serialized = json.dumps(data, indent=2, ensure_ascii=False)
-    _write_text_atomic(path, serialized, backup=True)
+    try:
+        _write_text_atomic(path, serialized, backup=True)
+    except Exception as exc:
+        log_event("warning", "config_save_failed", error=str(exc), path=str(path))
 
 
 def reset_learning_state(config: dict[str, Any], session_id: str) -> bool:

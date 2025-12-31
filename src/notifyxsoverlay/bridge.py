@@ -278,11 +278,11 @@ def _safe_notification_timeout(value: Any) -> float:
 def _safe_notification_opacity(value: Any) -> float:
     try:
         if value is None:
-            return 1.0
+            return 0.6
         opacity = float(value)
-        return opacity if 0.0 < opacity <= 1.0 else 1.0
+        return opacity if 0.0 < opacity <= 1.0 else 0.6
     except Exception:
-        return 1.0
+        return 0.6
 
 
 async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
@@ -330,7 +330,7 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
         if config_path.exists():
             mtime = config_path.stat().st_mtime
             if mtime > last_config_mtime:
-                config = load_config(config_path)
+                config = load_config(config_path, fallback=config)
                 last_config_mtime = mtime
                 ws_url_value = config.get("xs_overlay", {}).get("ws_url", "")
                 if not ws_url_value:

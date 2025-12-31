@@ -73,6 +73,7 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay run
 - 通知の表示時間は `xs_overlay.notification_timeout_seconds`（秒）で調整できます（既定 3.0 秒）。
 - 通知の透明度は `xs_overlay.notification_opacity`（0.0〜1.0）で調整できます（既定 0.6）。
 - 設定ファイルは保存時に `config.json.bak` を作成し、破損時は自動復旧を試みます。
+- 読み込み不能な設定が続く場合は、最後に読み込めた設定を保持します。
 - `poll_interval_seconds` の既定値は `1.0` 秒です。
 
 ## 仕様メモ
