@@ -19,6 +19,11 @@ dependencies = [
   "winrt-Windows.UI.Notifications.Management; platform_system == \"Windows\"",
 ]
 
+[project.optional-dependencies]
+test = [
+  "pytest>=7.4",
+]
+
 [project.scripts]
 notifyxsoverlay = "notifyxsoverlay.cli:main"
 
@@ -27,3 +32,6 @@ packages = ["src/notifyxsoverlay"]
 
 [tool.hatchling.build.targets.sdist]
 include = ["src/notifyxsoverlay", "README.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

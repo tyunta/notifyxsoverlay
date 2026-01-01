@@ -106,3 +106,6 @@ uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay run
   "poll_interval_seconds": 1.0
 }
 ```
+
+## ライセンス
+AGPL-3.0-or-later。詳細は `LICENSE` を参照してください。
