@@ -47,6 +47,14 @@ def test_resolve_uvx_path_expands_env(monkeypatch):
     assert found is True
 
 
+def test_resolve_uvx_path_explicit_uses_which(monkeypatch):
+    monkeypatch.setattr(cli.Path, "exists", lambda _self: False)
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: "C:/bin/uvx.exe")
+    path, found = cli.resolve_uvx_path("uvx.exe")
+    assert path == "C:/bin/uvx.exe"
+    assert found is True
+
+
 def test_build_manifest_overlay_flag():
     manifest = cli.build_manifest(Path("C:/bin/tool.exe"), "--arg", include_overlay=True)
     app_entry = manifest["applications"][0]
@@ -105,6 +113,17 @@ def test_write_wrapper_escapes_percent_and_quote(tmp_path):
     assert '""repo""' in content
     assert 'u""vx.exe' in content
     assert "^&b=2" in content
+
+
+def test_write_wrapper_escapes_parens_and_pipe(tmp_path):
+    wrapper_path = tmp_path / "notifyxsoverlay.cmd"
+    cli.write_wrapper(
+        wrapper_path,
+        "git+https://example.com/(x)|y",
+        "C:/bin/uvx.exe",
+    )
+    content = wrapper_path.read_text(encoding="utf-8")
+    assert "^(x^)^|y" in content
 
 
 def test_find_vrapp_method_by_tokens():
