@@ -323,7 +323,13 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
     log_event("info", "run_start", ws_url=ws_url_value)
 
     seen: dict[str, float] = {}
-    last_config_mtime = config_path.stat().st_mtime if config_path.exists() else 0.0
+    if config_path.exists():
+        try:
+            last_config_mtime = config_path.stat().st_mtime
+        except FileNotFoundError:
+            last_config_mtime = 0.0
+    else:
+        last_config_mtime = 0.0
     websocket: Any | None = None
     current_ws_url = ws_url_value
     last_send_error_at = 0.0
@@ -331,8 +337,11 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
 
     while True:
         if config_path.exists():
-            mtime = config_path.stat().st_mtime
-            if mtime > last_config_mtime:
+            try:
+                mtime = config_path.stat().st_mtime
+            except FileNotFoundError:
+                mtime = None
+            if mtime is not None and mtime > last_config_mtime:
                 config = load_config(config_path, fallback=config)
                 last_config_mtime = mtime
                 ws_url_value = config.get("xs_overlay", {}).get("ws_url", "")
