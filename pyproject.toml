@@ -7,6 +7,7 @@ name = "notifyxsoverlay"
 version = "0.1.0"
 description = "Bridge Windows notifications to XSOverlay with app-based filtering."
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
   "openvr",
@@ -17,6 +18,13 @@ dependencies = [
   "winrt-Windows.ApplicationModel; platform_system == \"Windows\"",
   "winrt-Windows.UI.Notifications; platform_system == \"Windows\"",
   "winrt-Windows.UI.Notifications.Management; platform_system == \"Windows\"",
+]
+
+classifiers = [
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
 ]
 
 [project.optional-dependencies]
@@ -31,7 +39,7 @@ notifyxsoverlay = "notifyxsoverlay.cli:main"
 packages = ["src/notifyxsoverlay"]
 
 [tool.hatchling.build.targets.sdist]
-include = ["src/notifyxsoverlay", "README.md", "pyproject.toml"]
+include = ["src/notifyxsoverlay", "README.md", "pyproject.toml", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
