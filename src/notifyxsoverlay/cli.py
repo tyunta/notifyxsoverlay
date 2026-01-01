@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -91,6 +92,23 @@ def build_manifest(binary_path: Path, arguments: str, include_overlay: bool) -> 
     }
 
 
+@dataclass(frozen=True)
+class ManifestVariant:
+    name: str
+    binary_path: Path
+    arguments: str
+    include_overlay: bool
+
+    def to_manifest(self) -> dict[str, Any]:
+        return build_manifest(self.binary_path, self.arguments, self.include_overlay)
+
+    def write(self, manifest_path: Path) -> None:
+        manifest_path.write_text(
+            json.dumps(self.to_manifest(), indent=2),
+            encoding="utf-8",
+        )
+
+
 def build_uvx_arguments(repo: str, quote_repo: bool = True) -> str:
     repo_value = f'"{repo}"' if quote_repo else repo
     return f"--refresh --from {repo_value} {APP_COMMAND} run"
@@ -107,36 +125,27 @@ def build_manifest_variants(
     uvx_exe: Path,
     repo: str,
     wrapper_path: Path,
-) -> list[tuple[str, Path, str, bool]]:
+) -> list[ManifestVariant]:
     args_plain = build_uvx_arguments(repo, quote_repo=False)
     args_quoted = build_uvx_arguments(repo, quote_repo=True)
-    variants: list[tuple[str, Path, str, bool]] = []
+    variants: list[ManifestVariant] = []
     if uvx_exe.suffix.lower() == ".exe":
-        variants.append(("uvx_direct_overlay", uvx_exe, args_plain, True))
-        variants.append(("uvx_direct_minimal", uvx_exe, args_plain, False))
-        variants.append(("uvx_direct_quoted_overlay", uvx_exe, args_quoted, True))
-        variants.append(("uvx_direct_quoted_minimal", uvx_exe, args_quoted, False))
+        variants.append(ManifestVariant("uvx_direct_overlay", uvx_exe, args_plain, True))
+        variants.append(ManifestVariant("uvx_direct_minimal", uvx_exe, args_plain, False))
+        variants.append(ManifestVariant("uvx_direct_quoted_overlay", uvx_exe, args_quoted, True))
+        variants.append(ManifestVariant("uvx_direct_quoted_minimal", uvx_exe, args_quoted, False))
     cmd_exe = get_cmd_exe()
-    variants.append(("cmd_uvx_plain_overlay", cmd_exe, f'/c "{uvx_exe}" {args_plain}', True))
-    variants.append(("cmd_uvx_plain_minimal", cmd_exe, f'/c "{uvx_exe}" {args_plain}', False))
-    variants.append(("cmd_uvx_quoted_overlay", cmd_exe, f'/c "{uvx_exe}" {args_quoted}', True))
-    variants.append(("cmd_uvx_quoted_minimal", cmd_exe, f'/c "{uvx_exe}" {args_quoted}', False))
-    variants.append(("cmd_wrapper_overlay", cmd_exe, f'/c "{wrapper_path}"', True))
-    variants.append(("cmd_wrapper_minimal", cmd_exe, f'/c "{wrapper_path}"', False))
+    variants.append(ManifestVariant("cmd_uvx_plain_overlay", cmd_exe, f'/c "{uvx_exe}" {args_plain}', True))
+    variants.append(ManifestVariant("cmd_uvx_plain_minimal", cmd_exe, f'/c "{uvx_exe}" {args_plain}', False))
+    variants.append(ManifestVariant("cmd_uvx_quoted_overlay", cmd_exe, f'/c "{uvx_exe}" {args_quoted}', True))
+    variants.append(ManifestVariant("cmd_uvx_quoted_minimal", cmd_exe, f'/c "{uvx_exe}" {args_quoted}', False))
+    variants.append(ManifestVariant("cmd_wrapper_overlay", cmd_exe, f'/c "{wrapper_path}"', True))
+    variants.append(ManifestVariant("cmd_wrapper_minimal", cmd_exe, f'/c "{wrapper_path}"', False))
     return variants
 
 
-def write_manifest_variant(
-    manifest_path: Path,
-    binary_path: Path,
-    arguments: str,
-    include_overlay: bool,
-) -> None:
-    manifest = build_manifest(binary_path, arguments, include_overlay)
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2),
-        encoding="utf-8",
-    )
+def write_manifest_variant(manifest_path: Path, variant: ManifestVariant) -> None:
+    variant.write(manifest_path)
 
 
 def with_openvr() -> Any | None:
@@ -219,7 +228,7 @@ def call_vrapp_method(
 def register_manifest(
     manifest_path: Path,
     auto_launch: bool,
-    variants: list[tuple[str, Path, str, bool]],
+    variants: list[ManifestVariant],
 ) -> None:
     openvr = with_openvr()
     if openvr is None:
@@ -256,21 +265,21 @@ def register_manifest(
             )
         invalid_error = getattr(openvr, "ApplicationError_InvalidManifest", None)
         last_invalid: Exception | None = None
-        for variant, binary_path, arguments, include_overlay in variants:
-            write_manifest_variant(manifest_path, binary_path, arguments, include_overlay)
+        for variant in variants:
+            write_manifest_variant(manifest_path, variant)
             try:
                 size = manifest_path.stat().st_size
                 log_event(
                     "info",
                     "steamvr_manifest_written",
-                    variant=variant,
+                    variant=variant.name,
                     bytes=size,
                 )
             except FileNotFoundError:
                 log_event(
                     "error",
                     "steamvr_manifest_missing",
-                    variant=variant,
+                    variant=variant.name,
                     manifest=str(manifest_path),
                 )
             try:
@@ -286,10 +295,10 @@ def register_manifest(
                     log_event(
                         "warning",
                         "steamvr_manifest_rejected",
-                        variant=variant,
-                        binary_path=str(binary_path),
-                        arguments=arguments,
-                        include_overlay=include_overlay,
+                        variant=variant.name,
+                        binary_path=str(variant.binary_path),
+                        arguments=variant.arguments,
+                        include_overlay=variant.include_overlay,
                         error_type=type(exc).__name__,
                         error_repr=repr(exc),
                     )
@@ -310,10 +319,10 @@ def register_manifest(
                     log_event(
                         "warning",
                         "steamvr_manifest_rejected",
-                        variant=variant,
-                        binary_path=str(binary_path),
-                        arguments=arguments,
-                        include_overlay=include_overlay,
+                        variant=variant.name,
+                        binary_path=str(variant.binary_path),
+                        arguments=variant.arguments,
+                        include_overlay=variant.include_overlay,
                         error=int(add_err),
                     )
                     last_invalid = RuntimeError(f"AddApplicationManifest failed: {add_err}")
@@ -333,9 +342,9 @@ def register_manifest(
             log_event(
                 "info",
                 "steamvr_manifest_selected",
-                variant=variant,
-                binary_path=str(binary_path),
-                include_overlay=include_overlay,
+                variant=variant.name,
+                binary_path=str(variant.binary_path),
+                include_overlay=variant.include_overlay,
             )
             return
         if last_invalid is not None:
@@ -432,7 +441,7 @@ def cmd_install(args: argparse.Namespace) -> int:
             "error_type": type(exc).__name__,
             "error_repr": repr(exc),
             "manifest": str(manifest_path),
-            "variants": [variant for variant, _, _, _ in variants],
+            "variants": [variant.name for variant in variants],
         }
         log_event(
             "error",

@@ -87,7 +87,7 @@ def test_build_manifest_variants_exe():
     uvx_exe = Path("C:/bin/uvx.exe")
     wrapper_path = Path("C:/temp/wrapper.cmd")
     variants = cli.build_manifest_variants(uvx_exe, "git+https://example.com/repo", wrapper_path)
-    names = {name for name, _, _, _ in variants}
+    names = {variant.name for variant in variants}
     assert "uvx_direct_overlay" in names
     assert "cmd_wrapper_minimal" in names
 
@@ -96,14 +96,15 @@ def test_build_manifest_variants_non_exe():
     uvx_exe = Path("C:/bin/uvx.cmd")
     wrapper_path = Path("C:/temp/wrapper.cmd")
     variants = cli.build_manifest_variants(uvx_exe, "git+https://example.com/repo", wrapper_path)
-    names = {name for name, _, _, _ in variants}
+    names = {variant.name for variant in variants}
     assert "uvx_direct_overlay" not in names
     assert "cmd_wrapper_overlay" in names
 
 
 def test_write_manifest_variant(tmp_path):
     manifest_path = tmp_path / "app.vrmanifest"
-    cli.write_manifest_variant(manifest_path, Path("C:/bin/tool.exe"), "--arg", include_overlay=True)
+    variant = cli.ManifestVariant("test", Path("C:/bin/tool.exe"), "--arg", True)
+    cli.write_manifest_variant(manifest_path, variant)
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert data["source"] == "builtin"
     assert data["applications"][0]["binary_path_windows"].endswith("tool.exe")

@@ -252,9 +252,9 @@ def test_block_overrides_allow():
     config = default_config()
     config["filters"]["allow"] = ["app"]
     config["filters"]["block"] = ["app"]
-    allow, reason, _ = _evaluate_notification("app", "", config)
-    assert allow is False
-    assert reason == "blocked"
+    decision = _evaluate_notification("app", "", config)
+    assert decision.allow is False
+    assert decision.reason == "blocked"
 
 
 def test_learning_allows_once_then_suppresses():
@@ -265,15 +265,15 @@ def test_learning_allows_once_then_suppresses():
     config["learning"]["pending"] = {}
     config["learning"]["shown_session"] = {}
 
-    allow1, reason1, changed1 = _evaluate_notification("app", "App", config)
-    allow2, reason2, changed2 = _evaluate_notification("app", "App", config)
+    decision1 = _evaluate_notification("app", "App", config)
+    decision2 = _evaluate_notification("app", "App", config)
 
-    assert allow1 is True
-    assert reason1 == "learning_allow"
-    assert changed1 is True
-    assert allow2 is False
-    assert reason2 == "learning_suppress"
-    assert changed2 is False
+    assert decision1.allow is True
+    assert decision1.reason == "learning_allow"
+    assert decision1.updated is True
+    assert decision2.allow is False
+    assert decision2.reason == "learning_suppress"
+    assert decision2.updated is False
 
 
 def test_allow_list_blocks_unknown_when_learning_disabled():
@@ -282,9 +282,9 @@ def test_allow_list_blocks_unknown_when_learning_disabled():
     config["filters"]["block"] = []
     config["learning"]["enabled"] = False
 
-    allow, reason, _ = _evaluate_notification("other", "Other", config)
-    assert allow is False
-    assert reason == "not_in_allow"
+    decision = _evaluate_notification("other", "Other", config)
+    assert decision.allow is False
+    assert decision.reason == "not_in_allow"
 
 
 def test_allow_list_allows_known_when_learning_disabled():
@@ -293,9 +293,9 @@ def test_allow_list_allows_known_when_learning_disabled():
     config["filters"]["block"] = []
     config["learning"]["enabled"] = False
 
-    allow, reason, _ = _evaluate_notification("app", "App", config)
-    assert allow is True
-    assert reason == "allowed"
+    decision = _evaluate_notification("app", "App", config)
+    assert decision.allow is True
+    assert decision.reason == "allowed"
 
 
 def test_default_allow_when_no_allow_list_and_learning_disabled():
@@ -304,9 +304,9 @@ def test_default_allow_when_no_allow_list_and_learning_disabled():
     config["filters"]["block"] = []
     config["learning"]["enabled"] = False
 
-    allow, reason, _ = _evaluate_notification("app", "App", config)
-    assert allow is True
-    assert reason == "default_allow"
+    decision = _evaluate_notification("app", "App", config)
+    assert decision.allow is True
+    assert decision.reason == "default_allow"
 
 
 def test_send_xs_notification_success(monkeypatch):

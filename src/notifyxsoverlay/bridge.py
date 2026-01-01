@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -36,18 +37,33 @@ def _get_toast_kind(notification_kinds: Any) -> Any:
     return notification_kinds
 
 
-async def _request_access(listener: Any) -> Any:
-    method = getattr(listener, "request_access_async", None) or getattr(listener, "RequestAccessAsync", None)
+async def _call_async_method(obj: Any, names: tuple[str, ...], error_message: str, *args: Any) -> Any:
+    method = None
+    for name in names:
+        candidate = getattr(obj, name, None)
+        if callable(candidate):
+            method = candidate
+            break
     if method is None:
-        raise RuntimeError("RequestAccessAsync not available")
-    return await method()
+        raise RuntimeError(error_message)
+    return await method(*args)
+
+
+async def _request_access(listener: Any) -> Any:
+    return await _call_async_method(
+        listener,
+        ("request_access_async", "RequestAccessAsync"),
+        "RequestAccessAsync not available",
+    )
 
 
 async def _get_notifications(listener: Any, kind: Any) -> list[Any]:
-    method = getattr(listener, "get_notifications_async", None) or getattr(listener, "GetNotificationsAsync", None)
-    if method is None:
-        raise RuntimeError("GetNotificationsAsync not available")
-    return await method(kind)
+    return await _call_async_method(
+        listener,
+        ("get_notifications_async", "GetNotificationsAsync"),
+        "GetNotificationsAsync not available",
+        kind,
+    )
 
 
 def _access_allowed(status: Any, status_enum: Any) -> bool:
@@ -174,36 +190,50 @@ async def _send_xs_notification(
         return False, None, str(exc)
 
 
+@dataclass(frozen=True)
+class FilterDecision:
+    allow: bool
+    reason: str
+    updated: bool = False
+
+
+class NotificationFilter:
+    def __init__(self, config: dict[str, Any]) -> None:
+        self._config = config
+        filters = config.get("filters", {})
+        self._allow_list = set(filters.get("allow", []))
+        self._block_list = set(filters.get("block", []))
+        self._learning = config.get("learning", {})
+
+    def evaluate(self, app_key: str, display_name: str) -> FilterDecision:
+        if app_key in self._block_list:
+            return FilterDecision(False, "blocked", False)
+        if app_key in self._allow_list:
+            return FilterDecision(True, "allowed", False)
+
+        if self._learning.get("enabled", True):
+            pending = self._learning.setdefault("pending", {})
+            changed = False
+            if app_key not in pending:
+                pending[app_key] = display_name or app_key
+                changed = True
+            shown_session = self._learning.setdefault("shown_session", {})
+            if app_key not in shown_session:
+                shown_session[app_key] = datetime.now().isoformat()
+                return FilterDecision(True, "learning_allow", True)
+            return FilterDecision(False, "learning_suppress", changed)
+
+        if self._allow_list:
+            return FilterDecision(False, "not_in_allow", False)
+        return FilterDecision(True, "default_allow", False)
+
+
 def _evaluate_notification(
     app_key: str,
     display_name: str,
     config: dict[str, Any],
-) -> tuple[bool, str, bool]:
-    filters = config.get("filters", {})
-    allow_list = set(filters.get("allow", []))
-    block_list = set(filters.get("block", []))
-
-    if app_key in block_list:
-        return False, "blocked", False
-    if app_key in allow_list:
-        return True, "allowed", False
-
-    learning = config.get("learning", {})
-    if learning.get("enabled", True):
-        pending = learning.setdefault("pending", {})
-        changed = False
-        if app_key not in pending:
-            pending[app_key] = display_name or app_key
-            changed = True
-        shown_session = learning.setdefault("shown_session", {})
-        if app_key not in shown_session:
-            shown_session[app_key] = datetime.now().isoformat()
-            return True, "learning_allow", True
-        return False, "learning_suppress", changed
-
-    if allow_list:
-        return False, "not_in_allow", False
-    return True, "default_allow", False
+) -> FilterDecision:
+    return NotificationFilter(config).evaluate(app_key, display_name)
 
 
 async def _init_listener() -> tuple[Any, Any, Any] | None:
@@ -259,33 +289,41 @@ def _build_display(title: str, texts: list[str], display_name: str, app_key: str
 
 
 def _safe_poll_interval(value: Any) -> float:
-    try:
-        if value is None:
-            return 1.0
-        interval = float(value)
-        return interval if interval > 0 else 1.0
-    except Exception:
-        return 1.0
+    return _safe_float(value, default=1.0, min_value=0.0, allow_zero=False)
 
 
 def _safe_notification_timeout(value: Any) -> float:
-    try:
-        if value is None:
-            return 3.0
-        timeout = float(value)
-        return timeout if timeout > 0 else 3.0
-    except Exception:
-        return 3.0
+    return _safe_float(value, default=3.0, min_value=0.0, allow_zero=False)
 
 
 def _safe_notification_opacity(value: Any) -> float:
+    return _safe_float(value, default=0.6, min_value=0.0, max_value=1.0, allow_zero=True)
+
+
+def _safe_float(
+    value: Any,
+    default: float,
+    *,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    allow_zero: bool = True,
+) -> float:
     try:
         if value is None:
-            return 0.6
-        opacity = float(value)
-        return opacity if 0.0 <= opacity <= 1.0 else 0.6
+            return default
+        number = float(value)
     except Exception:
-        return 0.6
+        return default
+    if min_value is not None:
+        if allow_zero:
+            if number < min_value:
+                return default
+        else:
+            if number <= min_value:
+                return default
+    if max_value is not None and number > max_value:
+        return default
+    return number
 
 
 async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
@@ -386,11 +424,11 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
             title = texts[0] if texts else ""
             title, content = _build_display(title, texts, display_name, app_key)
 
-            allow, reason, updated = _evaluate_notification(app_key, display_name, config)
-            if updated:
+            decision = _evaluate_notification(app_key, display_name, config)
+            if decision.updated:
                 changed = True
-            if not allow:
-                log_event("info", "notification_suppressed", app=app_key, reason=reason)
+            if not decision.allow:
+                log_event("info", "notification_suppressed", app=app_key, reason=decision.reason)
                 continue
 
             try:
