@@ -1,5 +1,12 @@
 AGENTS.md is UTF-8. If mojibake, reopen as UTF-8.
 
+## ドキュメント改善（簡易）
+- README: TL;DR / クイックスタート / 設定場所 / トラブルシュートを優先する
+- AGENTS: ルールは短く、運用手順とテストコマンドを明記する
+
+## テスト運用（簡易）
+- uv run --extra test --with pytest pytest
+- カバレッジ確認: uv run --extra test --with pytest-cov pytest --cov=src/notifyxsoverlay --cov-report=term-missing:skip-covered
 # NotifyXSOverlay 憲法
 
 ## 目的
