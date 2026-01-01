@@ -31,6 +31,11 @@ def test_ensure_client_param_preserves_existing():
     assert _ensure_client_param(ws_url) == ws_url
 
 
+def test_ensure_client_param_appends_with_ampersand():
+    ws_url = "ws://127.0.0.1:42070/?foo=1"
+    assert _ensure_client_param(ws_url).endswith("&client=NotifyXSOverlay")
+
+
 def test_get_attr_picks_first_match():
     class Dummy:
         value = "hit"
@@ -53,9 +58,24 @@ def test_get_toast_kind_prefers_uppercase():
     assert _get_toast_kind(Dummy()) == "toast"
 
 
+def test_get_toast_kind_falls_back():
+    class Dummy:
+        pass
+
+    dummy = Dummy()
+    assert _get_toast_kind(dummy) is dummy
+
+
 def test_access_allowed_handles_enum_variants():
     class Dummy:
         Allowed = "ok"
+
+    assert _access_allowed("ok", Dummy) is True
+
+
+def test_access_allowed_handles_uppercase():
+    class Dummy:
+        ALLOWED = "ok"
 
     assert _access_allowed("ok", Dummy) is True
 
@@ -95,6 +115,13 @@ def test_extract_text_elements_collects_texts():
         notification = Notification()
 
     assert _extract_text_elements(UserNotification()) == ["Title", "Body"]
+
+
+def test_extract_text_elements_missing_returns_empty():
+    class UserNotification:
+        notification = None
+
+    assert _extract_text_elements(UserNotification()) == []
 
 
 def test_safe_notification_opacity_clamps():
@@ -168,6 +195,12 @@ def test_build_display_falls_back_to_app_key():
     assert content == ""
 
 
+def test_build_display_uses_title_when_no_display_name():
+    title, content = _build_display("Title", ["Title", "Body"], "", "app.key")
+    assert title == "Title"
+    assert content == "Body"
+
+
 def test_notification_key_uses_id():
     class Dummy:
         id = 42
@@ -181,6 +214,15 @@ def test_notification_key_uses_creation_time():
         creation_time = datetime(2024, 1, 1, 0, 0, 0)
 
     assert _notification_key(Dummy(), "app").startswith("app:2024-01-01")
+
+
+def test_notification_key_falls_back_to_object_id():
+    class Dummy:
+        id = None
+        creation_time = "not-datetime"
+
+    key = _notification_key(Dummy(), "app")
+    assert key.startswith("app:")
 
 
 def test_prune_seen_removes_old_and_trims():
