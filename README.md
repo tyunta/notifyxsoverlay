@@ -1,5 +1,18 @@
 # NotifyXSOverlay
 
+## TL;DR
+Windows通知をXSOverlayへ中継し、アプリごとに通知の許可/拒否を制御できるツールです。
+
+## クイックスタート
+### 手動起動（最短）
+```powershell
+uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay run
+```
+
+### SteamVR起動時に自動起動
+```powershell
+uvx --from git+https://github.com/tyunta/notifyxsoverlay notifyxsoverlay install-steamvr
+```
 Windowsの通知をXSOverlayへ中継し、VR内で確実に視認できるようにするツールです。
 通知元アプリのフィルタリングを中核機能とします。
 
