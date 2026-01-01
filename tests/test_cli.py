@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -25,9 +26,24 @@ def test_get_cmd_exe_prefers_comspec(monkeypatch):
     assert str(cli.get_cmd_exe()) == r"C:\Temp\cmd.exe"
 
 
-def test_resolve_uvx_path_explicit():
+def test_resolve_uvx_path_explicit(monkeypatch):
+    monkeypatch.setattr(cli.Path, "exists", lambda _self: True)
     path, found = cli.resolve_uvx_path("C:/bin/uvx.exe")
-    assert path == "C:/bin/uvx.exe"
+    assert Path(path) == Path("C:/bin/uvx.exe")
+    assert found is True
+
+
+def test_resolve_uvx_path_expands_env(monkeypatch):
+    monkeypatch.setenv("UVX_HOME", "C:/bin")
+    expanded = os.path.expandvars("%UVX_HOME%/uvx.exe")
+    expanded_path = Path(expanded)
+
+    def fake_exists(self):
+        return self == expanded_path
+
+    monkeypatch.setattr(cli.Path, "exists", fake_exists)
+    path, found = cli.resolve_uvx_path("%UVX_HOME%/uvx.exe")
+    assert Path(path) == expanded_path
     assert found is True
 
 
@@ -75,6 +91,20 @@ def test_write_wrapper_contains_refresh_and_fallback(tmp_path):
     content = wrapper_path.read_text(encoding="utf-8")
     assert "--refresh --from" in content
     assert "if errorlevel 1" in content
+
+
+def test_write_wrapper_escapes_percent_and_quote(tmp_path):
+    wrapper_path = tmp_path / "notifyxsoverlay.cmd"
+    cli.write_wrapper(
+        wrapper_path,
+        'git+https://example.com/%TEMP%/"repo"?a=1&b=2',
+        'C:/bin/u"vx.exe',
+    )
+    content = wrapper_path.read_text(encoding="utf-8")
+    assert "%%TEMP%%" in content
+    assert '""repo""' in content
+    assert 'u""vx.exe' in content
+    assert "^&b=2" in content
 
 
 def test_find_vrapp_method_by_tokens():

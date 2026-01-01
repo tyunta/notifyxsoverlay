@@ -35,20 +35,36 @@ def normalize_repo(repo: str) -> str:
 
 def resolve_uvx_path(explicit_path: str | None) -> tuple[str, bool]:
     if explicit_path:
-        return explicit_path, True
+        expanded = os.path.expanduser(os.path.expandvars(explicit_path))
+        path = Path(expanded)
+        if path.exists():
+            return str(path), True
+        detected = shutil.which(expanded)
+        if detected:
+            return detected, True
+        return expanded, False
     detected = shutil.which("uvx")
     if detected:
         return detected, True
     return "uvx", False
 
 
+def _escape_cmd_literal(value: str) -> str:
+    value = value.replace("^", "^^").replace("%", "%%").replace('"', '""')
+    value = value.replace("&", "^&").replace("|", "^|").replace("<", "^<").replace(">", "^>")
+    value = value.replace("(", "^(").replace(")", "^)")
+    return value
+
+
 def write_wrapper(wrapper_path: Path, repo: str, uvx_exe: str) -> None:
+    safe_repo = _escape_cmd_literal(repo)
+    safe_uvx_exe = _escape_cmd_literal(uvx_exe)
     wrapper_content = (
         "@echo off\n"
         "setlocal\n"
-        f"\"{uvx_exe}\" --refresh --from \"{repo}\" {APP_COMMAND} run\n"
+        f"\"{safe_uvx_exe}\" --refresh --from \"{safe_repo}\" {APP_COMMAND} run\n"
         "if errorlevel 1 (\n"
-        f"  \"{uvx_exe}\" --from \"{repo}\" {APP_COMMAND} run\n"
+        f"  \"{safe_uvx_exe}\" --from \"{safe_repo}\" {APP_COMMAND} run\n"
         ")\n"
     )
     wrapper_path.write_text(wrapper_content, encoding="utf-8")
