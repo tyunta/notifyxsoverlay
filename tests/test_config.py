@@ -35,6 +35,13 @@ def test_load_config_restores_from_backup(tmp_path):
     assert path.exists()
 
 
+def test_load_config_reads_json(tmp_path):
+    path = tmp_path / "config.json"
+    _write_json(path, {"filters": {"allow": ["from.json"]}})
+    loaded = load_config(path)
+    assert loaded["filters"]["allow"] == ["from.json"]
+
+
 def test_load_config_renames_corrupt_and_uses_fallback(tmp_path):
     path = tmp_path / "config.json"
     backup = path.with_suffix(path.suffix + ".bak")
@@ -49,6 +56,67 @@ def test_load_config_renames_corrupt_and_uses_fallback(tmp_path):
     corrupt = path.with_suffix(path.suffix + ".corrupt")
     assert config is fallback
     assert corrupt.exists()
+
+
+def test_load_config_missing_returns_default(tmp_path):
+    path = tmp_path / "config.json"
+    loaded = load_config(path)
+    assert loaded == default_config()
+
+
+def test_load_config_non_dict_json_renames_and_defaults(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+
+    loaded = load_config(path)
+
+    corrupt = path.with_suffix(path.suffix + ".corrupt")
+    assert loaded == default_config()
+    assert corrupt.exists()
+
+
+def test_load_config_restore_logs_failure(monkeypatch, tmp_path):
+    path = tmp_path / "config.json"
+    backup = path.with_suffix(path.suffix + ".bak")
+    _write_json(backup, {"filters": {"allow": ["restored.app"]}})
+    path.write_text("{bad json", encoding="utf-8")
+
+    logged = []
+
+    def capture(level, event, **_fields):
+        logged.append((level, event))
+
+    def boom(*_args, **_kwargs):
+        raise OSError("nope")
+
+    monkeypatch.setattr(config, "_write_text_atomic", boom)
+    monkeypatch.setattr(config, "log_event", capture)
+
+    loaded = load_config(path)
+
+    assert loaded["filters"]["allow"] == ["restored.app"]
+    assert ("error", "config_restore_failed") in logged
+
+
+def test_load_config_corrupt_rename_failure(monkeypatch, tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text("{bad json", encoding="utf-8")
+
+    logged = []
+
+    def capture(level, event, **_fields):
+        logged.append((level, event))
+
+    def boom(self, target):
+        raise OSError("nope")
+
+    monkeypatch.setattr(config, "log_event", capture)
+    monkeypatch.setattr(config.Path, "replace", boom)
+
+    loaded = load_config(path)
+
+    assert loaded == default_config()
+    assert ("warning", "config_corrupt_rename_failed") in logged
 
 
 def test_normalize_config_migrates_and_sanitizes():
@@ -72,6 +140,12 @@ def test_normalize_config_migrates_and_sanitizes():
     assert normalized["learning"]["shown_session"] == {"app": "2024-01-01"}
     assert "shown_today" not in normalized["learning"]
     assert normalized["extra"] == 1
+
+
+def test_normalize_config_defaults_shown_session():
+    data = {"learning": {"shown_session": "nope", "shown_today": "nope"}}
+    normalized = normalize_config(data)
+    assert normalized["learning"]["shown_session"] == {}
 
 
 def test_reset_learning_state_resets_once():

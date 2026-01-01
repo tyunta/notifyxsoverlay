@@ -1,4 +1,10 @@
+import asyncio
+import builtins
+import sys
+import types
 from datetime import datetime
+
+import pytest
 
 from notifyxsoverlay.bridge import (
     _build_display,
@@ -12,6 +18,9 @@ from notifyxsoverlay.bridge import (
     _ensure_client_param,
     _access_allowed,
     _evaluate_notification,
+    _get_notifications,
+    _request_access,
+    _send_xs_notification,
     _notification_key,
     _prune_seen,
     _safe_notification_opacity,
@@ -43,12 +52,64 @@ def test_get_attr_picks_first_match():
     assert _get_attr(Dummy(), "missing", "value") == "hit"
 
 
+def test_get_attr_returns_none_when_missing():
+    class Dummy:
+        pass
+
+    assert _get_attr(Dummy(), "missing") is None
+
+
 def test_call_picks_callable():
     class Dummy:
         def ping(self):
             return "pong"
 
     assert _call(Dummy(), "missing", "ping") == "pong"
+
+
+def test_call_returns_none_when_missing():
+    class Dummy:
+        pass
+
+    assert _call(Dummy(), "missing") is None
+
+
+def test_request_access_raises_when_missing():
+    class Dummy:
+        pass
+
+    try:
+        asyncio.run(_request_access(Dummy()))
+        assert False, "expected RuntimeError"
+    except RuntimeError as exc:
+        assert "RequestAccessAsync" in str(exc)
+
+
+def test_request_access_uses_async_method():
+    class Dummy:
+        async def request_access_async(self):
+            return "ok"
+
+    assert asyncio.run(_request_access(Dummy())) == "ok"
+
+
+def test_get_notifications_raises_when_missing():
+    class Dummy:
+        pass
+
+    try:
+        asyncio.run(_get_notifications(Dummy(), "toast"))
+        assert False, "expected RuntimeError"
+    except RuntimeError as exc:
+        assert "GetNotificationsAsync" in str(exc)
+
+
+def test_get_notifications_uses_async_method():
+    class Dummy:
+        async def get_notifications_async(self, kind):
+            return [kind, "second"]
+
+    assert asyncio.run(_get_notifications(Dummy(), "toast")) == ["toast", "second"]
 
 
 def test_get_toast_kind_prefers_uppercase():
@@ -124,24 +185,67 @@ def test_extract_text_elements_missing_returns_empty():
     assert _extract_text_elements(UserNotification()) == []
 
 
+def test_extract_text_elements_missing_visual_returns_empty():
+    class Notification:
+        visual = None
+
+    class UserNotification:
+        notification = Notification()
+
+    assert _extract_text_elements(UserNotification()) == []
+
+
+def test_extract_text_elements_missing_bindings_returns_empty():
+    class Visual:
+        bindings = None
+
+    class Notification:
+        visual = Visual()
+
+    class UserNotification:
+        notification = Notification()
+
+    assert _extract_text_elements(UserNotification()) == []
+
+
+def test_extract_text_elements_skips_missing_elements():
+    class Binding:
+        def get_text_elements(self):
+            return None
+
+    class Visual:
+        bindings = [Binding()]
+
+    class Notification:
+        visual = Visual()
+
+    class UserNotification:
+        notification = Notification()
+
+    assert _extract_text_elements(UserNotification()) == []
+
+
 def test_safe_notification_opacity_clamps():
     assert _safe_notification_opacity(None) == 0.6
     assert _safe_notification_opacity(0.0) == 0.0
     assert _safe_notification_opacity(0.5) == 0.5
     assert _safe_notification_opacity(-1.0) == 0.6
     assert _safe_notification_opacity(2.0) == 0.6
+    assert _safe_notification_opacity("bad") == 0.6
 
 
 def test_safe_poll_interval():
     assert _safe_poll_interval(None) == 1.0
     assert _safe_poll_interval(-1.0) == 1.0
     assert _safe_poll_interval(0.2) == 0.2
+    assert _safe_poll_interval("bad") == 1.0
 
 
 def test_safe_notification_timeout():
     assert _safe_notification_timeout(None) == 3.0
     assert _safe_notification_timeout(-5.0) == 3.0
     assert _safe_notification_timeout(10.0) == 10.0
+    assert _safe_notification_timeout("bad") == 3.0
 
 
 def test_block_overrides_allow():
@@ -181,6 +285,151 @@ def test_allow_list_blocks_unknown_when_learning_disabled():
     allow, reason, _ = _evaluate_notification("other", "Other", config)
     assert allow is False
     assert reason == "not_in_allow"
+
+
+def test_allow_list_allows_known_when_learning_disabled():
+    config = default_config()
+    config["filters"]["allow"] = ["app"]
+    config["filters"]["block"] = []
+    config["learning"]["enabled"] = False
+
+    allow, reason, _ = _evaluate_notification("app", "App", config)
+    assert allow is True
+    assert reason == "allowed"
+
+
+def test_default_allow_when_no_allow_list_and_learning_disabled():
+    config = default_config()
+    config["filters"]["allow"] = []
+    config["filters"]["block"] = []
+    config["learning"]["enabled"] = False
+
+    allow, reason, _ = _evaluate_notification("app", "App", config)
+    assert allow is True
+    assert reason == "default_allow"
+
+
+def test_send_xs_notification_success(monkeypatch):
+    calls = {}
+
+    class FakeWebSocket:
+        def __init__(self):
+            self.closed = False
+            self.sent = []
+
+        async def send(self, message):
+            self.sent.append(message)
+
+        async def close(self):
+            self.closed = True
+
+    async def connect(url):
+        calls["url"] = url
+        return FakeWebSocket()
+
+    fake_module = types.SimpleNamespace(connect=connect)
+    monkeypatch.setitem(sys.modules, "websockets", fake_module)
+
+    ok, websocket, err = asyncio.run(
+        _send_xs_notification(
+            "ws://127.0.0.1:42070",
+            title="Title",
+            content="Body",
+            timeout_seconds=1.0,
+            opacity=0.5,
+            websocket=None,
+        )
+    )
+
+    assert ok is True
+    assert err is None
+    assert websocket is not None
+    assert "client=" in calls["url"]
+
+
+def test_send_xs_notification_send_failure(monkeypatch):
+    class FakeWebSocket:
+        def __init__(self):
+            self.closed = False
+
+        async def send(self, _message):
+            raise RuntimeError("boom")
+
+        async def close(self):
+            self.closed = True
+
+    async def connect(_url):
+        return FakeWebSocket()
+
+    fake_module = types.SimpleNamespace(connect=connect)
+    monkeypatch.setitem(sys.modules, "websockets", fake_module)
+
+    ok, websocket, err = asyncio.run(
+        _send_xs_notification(
+            "ws://127.0.0.1:42070",
+            title="Title",
+            content="Body",
+            timeout_seconds=1.0,
+            opacity=0.5,
+            websocket=None,
+        )
+    )
+
+    assert ok is False
+    assert websocket is None
+    assert "boom" in err
+
+
+def test_send_xs_notification_import_failure(monkeypatch):
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "websockets":
+            raise ImportError("nope")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    with pytest.raises(RuntimeError, match="websockets import failed"):
+        asyncio.run(
+            _send_xs_notification(
+                "ws://127.0.0.1:42070",
+                title="Title",
+                content="Body",
+                timeout_seconds=1.0,
+                opacity=0.5,
+                websocket=None,
+            )
+        )
+
+
+def test_send_xs_notification_close_failure(monkeypatch):
+    class FakeWebSocket:
+        async def send(self, _message):
+            raise RuntimeError("boom")
+
+        async def close(self):
+            raise RuntimeError("close failed")
+
+    async def connect(_url):
+        return FakeWebSocket()
+
+    fake_module = types.SimpleNamespace(connect=connect)
+    monkeypatch.setitem(sys.modules, "websockets", fake_module)
+
+    ok, websocket, err = asyncio.run(
+        _send_xs_notification(
+            "ws://127.0.0.1:42070",
+            title="Title",
+            content="Body",
+            timeout_seconds=1.0,
+            opacity=0.5,
+            websocket=None,
+        )
+    )
+
+    assert ok is False
+    assert websocket is None
+    assert "boom" in err
 
 
 def test_build_display_prefers_display_name():
