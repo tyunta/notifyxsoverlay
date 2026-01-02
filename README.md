@@ -76,6 +76,7 @@ notepad "$env:LOCALAPPDATA\\NotifyXSOverlay\\config.json"
 | `xs_overlay.ws_url` | str | `ws://127.0.0.1:42070/?client=NotifyXSOverlay` | XSOverlay設定のURL | WebSocket URL（XSOverlay側と一致させる） |
 | `xs_overlay.notification_timeout_seconds` | float | `3.0` | `3.0-5.0` | 表示秒数（0以上） |
 | `xs_overlay.notification_opacity` | float | `0.6` | `0.6` | 透明度（0.0-1.0） |
+| `steamvr.exit_on_shutdown` | bool | `true` | `true` | SteamVR終了で自動終了する |
 | `poll_interval_seconds` | float | `1.0` | `1.0` | ポーリング間隔（秒、0より大きい値） |
 
 #### 最小設定例（学習モードON）
@@ -100,6 +101,7 @@ notepad "$env:LOCALAPPDATA\\NotifyXSOverlay\\config.json"
     "notification_timeout_seconds": 3.0,
     "notification_opacity": 0.6
   },
+  "steamvr": { "exit_on_shutdown": true },
   "poll_interval_seconds": 1.0
 }
 ```
@@ -112,7 +114,7 @@ notepad "$env:LOCALAPPDATA\\NotifyXSOverlay\\config.json"
 | XSOverlayに届かない | XSOverlay未起動 / URL違い | XSOverlayを起動し、URL/ポートを確認 |
 | install-steamvr が失敗する | SteamVR未起動 / uvx未検出 | SteamVR起動中に再実行。詳細は「運用メモ」 |
 | ログが見たい | 実行時の状況を確認したい | 実行時の標準エラーにJSONログが出ます（例: `2> notifyxsoverlay.log` で保存） |
-| 通知が二重に出る | 自動起動と手動起動が同時 | どちらか片方の起動にする |
+| 通知が二重に出る | 旧プロセスが残っている | すべて終了してから再起動 |
 
 #### ログ保存の例（PowerShell）
 ```powershell
@@ -147,6 +149,8 @@ A. `learning.enabled=false` にして `filters.allow=["com.squirrel.Discord.Disc
 - `install-steamvr` は SteamVR 起動中に実行してください。
 - SteamVR起動ユーザーで `uvx` が見つからない場合は `--uvx-path` を指定してください。
 - 自動起動と手動起動の同時実行は想定していません。
+- 同時起動を避けるため、起動時に単一インスタンス判定を行います。
+- SteamVRの終了を検知したら即終了します（`steamvr.exit_on_shutdown=true`）。
 - 既定の許可リストには Discord（`com.squirrel.Discord.Discord`）を含めています。
 - 通知取得のポーリング間隔は `poll_interval_seconds` です。既定値は `1.0` 秒です。
 

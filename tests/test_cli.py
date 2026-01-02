@@ -282,6 +282,7 @@ def test_cmd_run_uses_run_bridge(monkeypatch):
     async def fake_run_bridge(ws_url=None, poll_interval=None):
         return 0
 
+    monkeypatch.setattr(cli, "acquire_single_instance", lambda: True)
     monkeypatch.setattr(cli, "run_bridge", fake_run_bridge)
     args = types.SimpleNamespace(ws_url=None, poll_interval=None)
     assert cli.cmd_run(args) == 0
@@ -296,12 +297,19 @@ def test_cmd_run_logs_on_keyboard_interrupt(monkeypatch):
     def capture(level, event, **_fields):
         logged.append((level, event))
 
+    monkeypatch.setattr(cli, "acquire_single_instance", lambda: True)
     monkeypatch.setattr(cli.asyncio, "run", fake_run)
     monkeypatch.setattr(cli, "run_bridge", lambda **_kwargs: "ignored")
     monkeypatch.setattr(cli, "log_event", capture)
     args = types.SimpleNamespace(ws_url=None, poll_interval=None)
     assert cli.cmd_run(args) == 0
     assert ("info", "run_stop") in logged
+
+
+def test_cmd_run_exits_when_already_running(monkeypatch):
+    monkeypatch.setattr(cli, "acquire_single_instance", lambda: False)
+    args = types.SimpleNamespace(ws_url=None, poll_interval=None)
+    assert cli.cmd_run(args) == 0
 
 
 def test_main_runs_command(monkeypatch):

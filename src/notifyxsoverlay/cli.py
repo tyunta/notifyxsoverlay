@@ -17,6 +17,7 @@ from .app import (
     APP_KEY,
     APP_NAME,
     DEFAULT_REPO,
+    acquire_single_instance,
     get_app_dir,
     get_manifest_path,
     get_wrapper_path,
@@ -498,6 +499,9 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    if not acquire_single_instance():
+        log_event("info", "single_instance_exit", reason="already_running")
+        return 0
     try:
         return asyncio.run(run_bridge(ws_url=args.ws_url, poll_interval=args.poll_interval))
     except KeyboardInterrupt:

@@ -148,6 +148,11 @@ def test_normalize_config_defaults_shown_session():
     assert normalized["learning"]["shown_session"] == {}
 
 
+def test_normalize_config_adds_steamvr_defaults():
+    normalized = normalize_config({})
+    assert normalized["steamvr"]["exit_on_shutdown"] is True
+
+
 def test_reset_learning_state_resets_once():
     config_data = default_config()
     config_data["learning"]["shown_session"] = {"app": "time"}

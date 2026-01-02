@@ -35,6 +35,9 @@ def default_config() -> dict[str, Any]:
             "notification_timeout_seconds": 3.0,
             "notification_opacity": 0.6,
         },
+        "steamvr": {
+            "exit_on_shutdown": True,
+        },
         "poll_interval_seconds": 1.0,
     }
 
@@ -92,8 +95,13 @@ def normalize_config(data: dict[str, Any]) -> dict[str, Any]:
             learning["shown_session"] = {}
     if "shown_today" in learning:
         learning.pop("shown_today", None)
+    steamvr = merged.get("steamvr", {})
+    if not isinstance(steamvr, dict):
+        steamvr = {}
+    steamvr["exit_on_shutdown"] = bool(steamvr.get("exit_on_shutdown", True))
     merged["filters"] = filters
     merged["learning"] = learning
+    merged["steamvr"] = steamvr
     return merged
 
 

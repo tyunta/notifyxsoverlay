@@ -277,6 +277,56 @@ async def _init_listener() -> tuple[Any, Any, Any] | None:
     return listener, NotificationKinds, UserNotificationListenerAccessStatus
 
 
+def _init_openvr() -> tuple[Any, Any] | None:
+    try:
+        import openvr  # type: ignore
+    except Exception as exc:
+        log_event("warning", "openvr_import_failed", error=str(exc))
+        return None
+    try:
+        openvr.init(openvr.VRApplication_Utility)
+    except Exception as exc:
+        log_event("warning", "openvr_init_failed", error=str(exc))
+        return None
+    try:
+        vr_system = openvr.VRSystem()
+    except Exception as exc:
+        log_event("warning", "openvr_system_failed", error=str(exc))
+        try:
+            openvr.shutdown()
+        except Exception:
+            pass
+        return None
+    return openvr, vr_system
+
+
+def _poll_next_event(vr_system: Any, event: Any) -> bool:
+    method = getattr(vr_system, "pollNextEvent", None) or getattr(vr_system, "PollNextEvent", None)
+    if not callable(method):
+        return False
+    return bool(method(event))
+
+
+def _poll_openvr_quit(openvr: Any, vr_system: Any) -> bool:
+    event = openvr.VREvent_t()
+    quit_event = getattr(openvr, "VREvent_Quit", None)
+    process_quit = getattr(openvr, "VREvent_ProcessQuit", None)
+    while _poll_next_event(vr_system, event):
+        event_type = getattr(event, "eventType", None)
+        if event_type == quit_event or event_type == process_quit:
+            return True
+    return False
+
+
+def _acknowledge_quit(vr_system: Any) -> bool:
+    for name in ("AcknowledgeQuit_Exiting", "acknowledgeQuit_Exiting"):
+        method = getattr(vr_system, name, None)
+        if callable(method):
+            method()
+            return True
+    return False
+
+
 def _build_display(title: str, texts: list[str], display_name: str, app_key: str) -> tuple[str, str]:
     if display_name:
         title = display_name
@@ -329,6 +379,7 @@ def _safe_float(
 async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
     config_path = get_config_path()
     config = load_config(config_path)
+    openvr_ctx: tuple[Any, Any] | None = None
     if ws_url:
         config.setdefault("xs_overlay", {})["ws_url"] = ws_url
     if poll_interval is not None:
@@ -349,6 +400,11 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
     if not ws_url_value:
         log_event("error", "ws_url_missing")
         return 1
+
+    steamvr_exit_on_shutdown = bool(config.get("steamvr", {}).get("exit_on_shutdown", False))
+    openvr_ctx = _init_openvr() if steamvr_exit_on_shutdown else None
+    if steamvr_exit_on_shutdown and openvr_ctx is None:
+        log_event("warning", "steamvr_exit_monitor_unavailable")
 
     poll_delay = _safe_poll_interval(config.get("poll_interval_seconds"))
     notification_timeout = _safe_notification_timeout(
@@ -373,92 +429,108 @@ async def run_bridge(ws_url: str | None, poll_interval: float | None) -> int:
     last_send_error_at = 0.0
     send_error_interval = 30.0
 
-    while True:
-        if config_path.exists():
-            try:
-                mtime = config_path.stat().st_mtime
-            except FileNotFoundError:
-                mtime = None
-            if mtime is not None and mtime > last_config_mtime:
-                config = load_config(config_path, fallback=config)
-                last_config_mtime = mtime
-                ws_url_value = config.get("xs_overlay", {}).get("ws_url", "")
-                if not ws_url_value:
-                    log_event("error", "ws_url_missing")
-                    return 1
-                if ws_url_value != current_ws_url:
-                    current_ws_url = ws_url_value
-                    if websocket is not None:
-                        try:
-                            await websocket.close()
-                        except Exception:
-                            pass
-                        websocket = None
-                poll_delay = _safe_poll_interval(config.get("poll_interval_seconds"))
-                notification_timeout = _safe_notification_timeout(
-                    config.get("xs_overlay", {}).get("notification_timeout_seconds")
-                )
-                notification_opacity = _safe_notification_opacity(
-                    config.get("xs_overlay", {}).get("notification_opacity")
-                )
-        if reset_learning_state(config, session_id):
-            save_config(config_path, config)
-
-        try:
-            notifications = await _get_notifications(listener, toast_kind)
-        except Exception as exc:
-            log_event("error", "notification_poll_failed", error=str(exc))
-            await asyncio.sleep(max(poll_delay, 1.0))
-            continue
-
-        changed = False
-        for user_notification in notifications:
-            app_id, display_name = _extract_app_info(user_notification)
-            app_key = app_id or display_name or "unknown"
-            key = _notification_key(user_notification, app_key)
-            if key in seen:
-                continue
-            seen[key] = time.time()
-
-            texts = _extract_text_elements(user_notification)
-            title = texts[0] if texts else ""
-            title, content = _build_display(title, texts, display_name, app_key)
-
-            decision = _evaluate_notification(app_key, display_name, config)
-            if decision.updated:
-                changed = True
-            if not decision.allow:
-                log_event("info", "notification_suppressed", app=app_key, reason=decision.reason)
-                continue
+    try:
+        while True:
+            if openvr_ctx is not None and _poll_openvr_quit(*openvr_ctx):
+                _acknowledge_quit(openvr_ctx[1])
+                log_event("info", "steamvr_quit_detected")
+                break
+            if config_path.exists():
+                try:
+                    mtime = config_path.stat().st_mtime
+                except FileNotFoundError:
+                    mtime = None
+                if mtime is not None and mtime > last_config_mtime:
+                    config = load_config(config_path, fallback=config)
+                    last_config_mtime = mtime
+                    ws_url_value = config.get("xs_overlay", {}).get("ws_url", "")
+                    if not ws_url_value:
+                        log_event("error", "ws_url_missing")
+                        return 1
+                    if ws_url_value != current_ws_url:
+                        current_ws_url = ws_url_value
+                        if websocket is not None:
+                            try:
+                                await websocket.close()
+                            except Exception:
+                                pass
+                            websocket = None
+                    poll_delay = _safe_poll_interval(config.get("poll_interval_seconds"))
+                    notification_timeout = _safe_notification_timeout(
+                        config.get("xs_overlay", {}).get("notification_timeout_seconds")
+                    )
+                    notification_opacity = _safe_notification_opacity(
+                        config.get("xs_overlay", {}).get("notification_opacity")
+                    )
+            if reset_learning_state(config, session_id):
+                save_config(config_path, config)
 
             try:
-                ok, websocket, send_error = await _send_xs_notification(
-                    ws_url_value,
-                    title=title,
-                    content=content,
-                    timeout_seconds=notification_timeout,
-                    opacity=notification_opacity,
-                    websocket=websocket,
-                )
-                if ok:
-                    log_event("info", "notification_sent", app=app_key)
-                else:
+                notifications = await _get_notifications(listener, toast_kind)
+            except Exception as exc:
+                log_event("error", "notification_poll_failed", error=str(exc))
+                await asyncio.sleep(max(poll_delay, 1.0))
+                continue
+
+            changed = False
+            for user_notification in notifications:
+                app_id, display_name = _extract_app_info(user_notification)
+                app_key = app_id or display_name or "unknown"
+                key = _notification_key(user_notification, app_key)
+                if key in seen:
+                    continue
+                seen[key] = time.time()
+
+                texts = _extract_text_elements(user_notification)
+                title = texts[0] if texts else ""
+                title, content = _build_display(title, texts, display_name, app_key)
+
+                decision = _evaluate_notification(app_key, display_name, config)
+                if decision.updated:
+                    changed = True
+                if not decision.allow:
+                    log_event("info", "notification_suppressed", app=app_key, reason=decision.reason)
+                    continue
+
+                try:
+                    ok, websocket, send_error = await _send_xs_notification(
+                        ws_url_value,
+                        title=title,
+                        content=content,
+                        timeout_seconds=notification_timeout,
+                        opacity=notification_opacity,
+                        websocket=websocket,
+                    )
+                    if ok:
+                        log_event("info", "notification_sent", app=app_key)
+                    else:
+                        now = time.time()
+                        if now - last_send_error_at >= send_error_interval:
+                            log_event(
+                                "error",
+                                "notification_send_failed",
+                                error=send_error or "send_failed",
+                                app=app_key,
+                            )
+                            last_send_error_at = now
+                except Exception as exc:
                     now = time.time()
                     if now - last_send_error_at >= send_error_interval:
-                        log_event(
-                            "error",
-                            "notification_send_failed",
-                            error=send_error or "send_failed",
-                            app=app_key,
-                        )
+                        log_event("error", "notification_send_failed", error=str(exc), app=app_key)
                         last_send_error_at = now
-            except Exception as exc:
-                now = time.time()
-                if now - last_send_error_at >= send_error_interval:
-                    log_event("error", "notification_send_failed", error=str(exc), app=app_key)
-                    last_send_error_at = now
 
-        if changed:
-            save_config(config_path, config)
-        _prune_seen(seen)
-        await asyncio.sleep(poll_delay)
+            if changed:
+                save_config(config_path, config)
+            _prune_seen(seen)
+            await asyncio.sleep(poll_delay)
+    finally:
+        if websocket is not None:
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+        if openvr_ctx is not None:
+            try:
+                openvr_ctx[0].shutdown()
+            except Exception:
+                pass
